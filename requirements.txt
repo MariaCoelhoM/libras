@@ -5,3 +5,4 @@ tensorflow>=2.16
 scikit-learn>=1.4
 kaggle
 tqdm
+flask
