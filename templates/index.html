@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Teste do Alfabeto em Libras</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #111;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+        }
+        #container {
+            position: relative;
+        }
+        video {
+            transform: scaleX(-1); /* espelha, fica mais natural */
+            border-radius: 8px;
+            max-width: 640px;
+            width: 100%;
+        }
+        #resultado {
+            font-size: 2em;
+            margin-top: 16px;
+            min-height: 1.5em;
+        }
+        #status {
+            color: #999;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Teste em tempo real - Alfabeto Libras</h1>
+    <div id="container">
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+    <div id="resultado">Aguardando camera...</div>
+    <div id="status"></div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const resultado = document.getElementById("resultado");
+        const status = document.getElementById("status");
+
+        async function iniciarCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                status.textContent = "Camera conectada. Classificando a cada 500ms...";
+            } catch (err) {
+                status.textContent = "Erro ao acessar a camera: " + err.message;
+            }
+        }
+
+        async function capturarEEnviar() {
+            if (video.videoWidth === 0) return; // camera ainda nao pronta
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+
+            try {
+                const resp = await fetch("/predict", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ image: dataUrl }),
+                });
+                const data = await resp.json();
+
+                if (data.detected) {
+                    resultado.textContent = `${data.label} (${(data.confidence * 100).toFixed(1)}%)`;
+                } else {
+                    resultado.textContent = "Nenhuma mao detectada";
+                }
+            } catch (err) {
+                status.textContent = "Erro na predicao: " + err.message;
+            }
+        }
+
+        iniciarCamera();
+        setInterval(capturarEEnviar, 500);
+    </script>
+</body>
+</html>
