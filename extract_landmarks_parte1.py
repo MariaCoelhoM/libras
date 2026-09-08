@@ -32,11 +32,11 @@ from mediapipe.tasks.python import vision as mp_vision
 from tqdm import tqdm
 
 
-def create_detector(model_path, num_hands=1):
+def create_detector(model_path):
     base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
     options = mp_vision.HandLandmarkerOptions(
         base_options=base_options,
-        num_hands=num_hands,
+        num_hands=1,
         running_mode=mp_vision.RunningMode.IMAGE,
     )
     return mp_vision.HandLandmarker.create_from_options(options)
