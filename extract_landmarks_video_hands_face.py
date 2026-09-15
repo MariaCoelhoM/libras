@@ -14,7 +14,7 @@ from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision as mp_vision
 from tqdm import tqdm
 
-from extract_landmarks import create_detector, normalize_landmarks, find_class_dirs
+from extract_landmarks_video_vlibras import create_detector, normalize_landmarks, find_class_dirs
 
 FRAMES_POR_VIDEO = 30
 
@@ -54,7 +54,6 @@ _FACEMESH_RIGHT_EYEBROW = frozenset([
 
 
 def get_enm_landmark_indices():
-    """Uniao (ordenada, sem duplicata) dos indices dos grupos acima."""
     indices = set()
     for group in (_FACEMESH_LIPS, _FACEMESH_LEFT_EYE, _FACEMESH_LEFT_EYEBROW,
                   _FACEMESH_RIGHT_EYE, _FACEMESH_RIGHT_EYEBROW):
@@ -220,7 +219,6 @@ def count_actual_frames(video_path):
         count += 1
     cap.release()
     return count
-
 
 def extract_sequence_from_video(hand_detector, face_detector, video_path, n_frames=FRAMES_POR_VIDEO):
     total_frames = count_actual_frames(video_path)
