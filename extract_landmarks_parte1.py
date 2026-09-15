@@ -8,14 +8,16 @@ from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision as mp_vision
 from tqdm import tqdm
 
-def create_detector(model_path, num_hands=1):
+
+def create_detector(model_path):
     base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
     options = mp_vision.HandLandmarkerOptions(
         base_options=base_options,
-        num_hands=num_hands,
+        num_hands=1,
         running_mode=mp_vision.RunningMode.IMAGE,
     )
     return mp_vision.HandLandmarker.create_from_options(options)
+
 
 def extract_landmarks_from_mp_image(detector, mp_image):
     result = detector.detect(mp_image)
@@ -29,6 +31,7 @@ def extract_landmarks_from_mp_image(detector, mp_image):
     )
     return landmarks
 
+
 def extract_landmarks_from_image(detector, image_path):
     try:
         image = mp.Image.create_from_file(image_path)
@@ -37,6 +40,7 @@ def extract_landmarks_from_image(detector, image_path):
 
     return extract_landmarks_from_mp_image(detector, image)
 
+
 def normalize_landmarks(landmarks):
     wrist = landmarks[0].copy()
     centered = landmarks - wrist
@@ -44,6 +48,7 @@ def normalize_landmarks(landmarks):
     if max_dist > 0:
         centered = centered / max_dist
     return centered
+
 
 def find_class_dirs(dataset_dir):
     entries = sorted(
@@ -67,6 +72,7 @@ def find_class_dirs(dataset_dir):
             if os.path.isdir(label_path):
                 class_dirs.append((label, label_path))
     return class_dirs
+
 
 def build_dataset(dataset_dir, model_path):
     X, y = [], []
@@ -112,6 +118,7 @@ def build_dataset(dataset_dir, model_path):
     print(f"Total de falhas (mao nao detectada): {failed}")
 
     return np.array(X, dtype=np.float32), np.array(y)
+
 
 def main():
     parser = argparse.ArgumentParser()

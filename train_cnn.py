@@ -1,23 +1,9 @@
-"""
-Treina uma CNN para classificar letras do alfabeto manual da Libras
-a partir dos landmarks extraidos pelo MediaPipe Hands (script extract_landmarks.py).
-
-Cada amostra e um vetor (21, 3): 21 pontos articulares da mao, cada um com
-coordenadas (x, y, z). A CNN trata isso como uma "imagem" 1D de 21 posicoes
-com 3 canais, aplicando convolucoes ao longo dos pontos articulares para
-aprender combinacoes locais de configuracao da mao.
-
-Uso:
-    python train_cnn.py --data landmarks.npz --output modelo_alfabeto.keras
-"""
-
 import argparse
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix
-
 
 def build_model(num_points, num_channels, num_classes):
     model = tf.keras.Sequential([
@@ -86,7 +72,6 @@ def main():
         callbacks=[early_stop],
     )
 
-    # Avaliacao final no conjunto de teste
     test_loss, test_acc = model.evaluate(X_test, y_test)
     print(f"\nAcuracia no teste: {test_acc:.4f}")
 

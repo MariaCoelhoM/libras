@@ -1,41 +1,3 @@
-"""
-Extrator de landmarks de video para o dataset de palavras (sinais dinamicos) da Libras.
-
-Aceita dois formatos de dataset:
-
-1) Uma pasta por classe (formato original, ex.: MINDS-Libras):
-    dataset/
-        PALAVRA1/ video1.mp4 video2.mp4 ...
-        PALAVRA2/ video1.mp4 video2.mp4 ...
-        ...
-
-2) Pasta unica com todos os videos e um annotations.csv separado mapeando
-   nome do arquivo -> classe (formato do V-Librasil, ex.: pasta "data/" com
-   todos os videos soltos e um annotations.csv com colunas "video_name" e
-   "class"). Nesse caso, passe --annotations_csv apontando para o CSV.
-
-Para cada video, amostra FRAMES_POR_VIDEO frames uniformemente ao longo da
-duracao, roda o HandLandmarker com ate 2 maos por frame, e monta uma sequencia
-de tamanho fixo (T, 2, 21, 3): T frames, 2 slots de mao (esquerda/direita,
-zerado se a mao nao foi detectada naquele frame), 21 pontos, 3 coordenadas.
-
-Salva em um .npz com:
-    X -> shape (N, T, 2, 21, 3)
-    y -> shape (N,)  com os nomes das classes (palavras)
-
-Requer o arquivo de modelo hand_landmarker.task (mesmo do extract_landmarks.py).
-
-Uso:
-    # pasta por classe (MINDS-Libras)
-    python extract_landmarks_video.py --dataset_dir ./dataset_palavras --output landmarks_video_minds.npz
-
-    # V-Librasil, extraido em disco, pasta unica + annotations.csv
-    python extract_landmarks_video.py --dataset_dir ./v-librasil/data --annotations_csv ./v-librasil/annotations.csv --output landmarks_video.npz
-
-    # V-Librasil, direto do zip (recomendado: evita extrair 10GB em disco)
-    python extract_landmarks_video.py --zip_path ./v-librasil.zip --annotations_csv ./v-librasil/annotations.csv --output landmarks_video.npz
-"""
-
 import argparse
 import contextlib
 import csv
@@ -57,11 +19,6 @@ FRAMES_POR_VIDEO = 30
 
 @contextlib.contextmanager
 def redirect_native_stderr_to_devnull():
-    """Silencia mensagens que o ffmpeg/mediapipe escrevem direto no stderr
-    nativo (fd 2), contornando o logging do Python/OpenCV - caso dos avisos
-    de 'swscaler' sobre videos entrelacados. Nao afeta print()/tqdm, que usam
-    stdout.
-    """
     stderr_fd = sys.stderr.fileno()
     saved_fd = os.dup(stderr_fd)
     devnull_fd = os.open(os.devnull, os.O_WRONLY)
@@ -77,13 +34,6 @@ def redirect_native_stderr_to_devnull():
 
 
 def load_annotations(csv_path):
-    """Le o annotations.csv do V-Librasil e monta um dict
-    nome_do_arquivo (ex.: 'Abacaxi_Articulador1.mp4') -> classe (ex.: 'Abacaxi').
-
-    Casa pela coluna 'video_name', que e' o nome real do arquivo de video
-    (diferente de 'video_id', que e' um hash interno do dataset e nao bate
-    com os nomes de arquivo baixados do Kaggle).
-    """
     mapping = {}
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
@@ -95,13 +45,6 @@ def load_annotations(csv_path):
 
 
 def label_from_filename(filename, filename_regex):
-    """Extrai a classe (palavra) do proprio nome do arquivo usando uma regex
-    com um grupo de captura. Usado para datasets sem annotations.csv, como o
-    MINDS-Libras, onde o nome do arquivo ja carrega a informacao da classe
-    (ex.: '01AcontecerSinalizador01-1.mp4' -> classe 'Acontecer').
-
-    Retorna None se o nome do arquivo nao bater com o padrao.
-    """
     match = filename_regex.match(filename)
     if not match:
         return None
@@ -109,11 +52,6 @@ def label_from_filename(filename, filename_regex):
 
 
 def resolve_label(filename, annotations=None, filename_regex=None):
-    """Resolve a classe de um arquivo de video a partir do nome do arquivo:
-    primeiro tenta o annotations.csv (se fornecido), depois a regex do nome
-    do arquivo (se fornecida). Retorna None se nenhum dos dois identificou a
-    classe.
-    """
     if annotations is not None:
         return annotations.get(filename)
     if filename_regex is not None:
@@ -122,16 +60,6 @@ def resolve_label(filename, annotations=None, filename_regex=None):
 
 
 def find_video_members_in_zip(zip_path, annotations=None, filename_regex=None):
-    """Le a lista de arquivos do zip e infere a classe (palavra).
-
-    Se 'annotations' ou 'filename_regex' forem informados, o rotulo vem do
-    nome do arquivo (via CSV ou via regex) - necessario para datasets com
-    pasta unica, como o V-Librasil (CSV) ou o MINDS-Libras (regex).
-
-    Caso contrario, cai no comportamento antigo: infere a classe pela pasta
-    imediatamente acima do arquivo dentro do zip (funciona para datasets
-    organizados em uma subpasta por classe).
-    """
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
 
@@ -162,10 +90,6 @@ def find_video_members_in_zip(zip_path, annotations=None, filename_regex=None):
 
 
 def find_videos_flat_dir(dataset_dir, annotations=None, filename_regex=None):
-    """Varre uma pasta unica com todos os videos soltos (ex.: a pasta 'data/'
-    do V-Librasil, ou a pasta raiz do MINDS-Libras) e resolve a classe de
-    cada arquivo via annotations.csv ou via regex do nome do arquivo.
-    """
     video_paths = []
     skipped = 0
     for filename in os.listdir(dataset_dir):
@@ -190,9 +114,6 @@ def sample_frame_indices(total_frames, n_samples):
 
 
 def extract_hands_from_frame(detector, frame_rgb):
-    """Retorna um array (2, 21, 3): slot 0 = mao esquerda, slot 1 = mao direita.
-    Zerado no slot correspondente se aquela mao nao foi detectada no frame.
-    """
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
     result = detector.detect(mp_image)
 
@@ -255,10 +176,6 @@ def extract_sequence_from_video(detector, video_path, n_frames=FRAMES_POR_VIDEO)
 
 
 def build_dataset_from_zip(zip_path, model_path, annotations=None, filename_regex=None, quiet=False, failures_log=None):
-    """Igual a build_dataset, mas le os videos direto de dentro do .zip,
-    extraindo um por vez para um arquivo temporario e apagando em seguida.
-    Evita precisar de espaco em disco para o dataset inteiro descompactado.
-    """
     X, y = [], []
     failed = 0
 
@@ -374,7 +291,6 @@ def build_dataset(dataset_dir, model_path, annotations=None, filename_regex=None
     print(f"Total de falhas (nenhuma mao detectada no video): {failed}")
 
     return np.array(X, dtype=np.float32), np.array(y)
-
 
 def main():
     parser = argparse.ArgumentParser()

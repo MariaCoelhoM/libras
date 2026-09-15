@@ -1,14 +1,3 @@
-"""
-Servidor local para testar o modelo com a webcam de verdade, acessada pelo
-navegador (a pagina em templates/index.html usa getUserMedia para pegar o
-video da sua camera e manda frames para essa API classificar).
-
-Uso:
-    python app.py
-
-Depois abra a URL que o Codespace forwardear para a porta 5000 no seu navegador.
-"""
-
 import base64
 import json
 import os
@@ -52,7 +41,7 @@ def index():
 @app.route("/predict", methods=["POST"])
 def predict():
     payload = request.get_json()
-    image_b64 = payload["image"].split(",")[1]  # remove o prefixo "data:image/jpeg;base64,"
+    image_b64 = payload["image"].split(",")[1]
     image_bytes = base64.b64decode(image_b64)
 
     np_arr = np.frombuffer(image_bytes, dtype=np.uint8)
@@ -75,7 +64,6 @@ def predict():
         "label": LABELS[pred_idx],
         "confidence": float(probs[pred_idx]),
     })
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
