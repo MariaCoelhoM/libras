@@ -14,7 +14,7 @@ from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision as mp_vision
 from tqdm import tqdm
 
-from extract_landmarks_video_vlibras import create_detector, normalize_landmarks, find_class_dirs
+from extract_landmarks_video_vlibras import normalize_landmarks, find_class_dirs
 
 FRAMES_POR_VIDEO = 30
 
@@ -67,12 +67,27 @@ ENM_LANDMARK_INDICES = get_enm_landmark_indices()
 N_FACE_POINTS = len(ENM_LANDMARK_INDICES)
 
 
+def create_hand_detector(model_path, num_hands=2):
+    base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
+    options = mp_vision.HandLandmarkerOptions(
+        base_options=base_options,
+        running_mode=mp_vision.RunningMode.VIDEO,
+        num_hands=num_hands,
+        min_hand_detection_confidence=0.3,
+        min_hand_presence_confidence=0.3,
+        min_tracking_confidence=0.3,
+    )
+    return mp_vision.HandLandmarker.create_from_options(options)
+
+
 def create_face_detector(model_path, num_faces=1):
     base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
     options = mp_vision.FaceLandmarkerOptions(
         base_options=base_options,
-        running_mode=mp_vision.RunningMode.IMAGE,
+        running_mode=mp_vision.RunningMode.VIDEO,
         num_faces=num_faces,
+        min_face_detection_confidence=0.3,
+        min_face_presence_confidence=0.3,
         output_face_blendshapes=False,
         output_facial_transformation_matrixes=False,
     )
@@ -81,7 +96,6 @@ def create_face_detector(model_path, num_faces=1):
 
 @contextlib.contextmanager
 def redirect_native_stderr_to_devnull():
-
     stderr_fd = sys.stderr.fileno()
     saved_fd = os.dup(stderr_fd)
     devnull_fd = os.open(os.devnull, os.O_WRONLY)
@@ -172,9 +186,9 @@ def sample_frame_indices(total_frames, n_samples):
     return sorted(set(np.linspace(0, total_frames - 1, n_samples).astype(int).tolist()))
 
 
-def extract_hands_from_frame(detector, frame_rgb):
+def extract_hands_from_frame(detector, frame_rgb, timestamp_ms):
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-    result = detector.detect(mp_image)
+    result = detector.detect_for_video(mp_image, timestamp_ms)
 
     hands_arr = np.zeros((2, 21, 3), dtype=np.float32)
 
@@ -190,16 +204,16 @@ def extract_hands_from_frame(detector, frame_rgb):
     return hands_arr
 
 
-def extract_face_from_frame(detector, frame_rgb):
+def extract_face_from_frame(detector, frame_rgb, timestamp_ms):
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-    result = detector.detect(mp_image)
+    result = detector.detect_for_video(mp_image, timestamp_ms)
 
     face_arr = np.zeros((N_FACE_POINTS, 3), dtype=np.float32)
 
     if not result.face_landmarks:
         return face_arr
 
-    all_landmarks = result.face_landmarks[0]  # so 1 rosto (num_faces=1)
+    all_landmarks = result.face_landmarks[0]
     for out_idx, mesh_idx in enumerate(ENM_LANDMARK_INDICES):
         lm = all_landmarks[mesh_idx]
         face_arr[out_idx] = [lm.x, lm.y, lm.z]
@@ -210,18 +224,22 @@ def extract_face_from_frame(detector, frame_rgb):
 def count_actual_frames(video_path):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        return 0
+        return 0, 0
     count = 0
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps <= 0 or np.isnan(fps):
+        fps = 30.0
     while True:
         ok, _ = cap.read()
         if not ok:
             break
         count += 1
     cap.release()
-    return count
+    return count, fps
 
-def extract_sequence_from_video(hand_detector, face_detector, video_path, n_frames=FRAMES_POR_VIDEO):
-    total_frames = count_actual_frames(video_path)
+
+def extract_sequence_from_video(hand_model_path, face_model_path, video_path, n_frames=FRAMES_POR_VIDEO):
+    total_frames, fps = count_actual_frames(video_path)
     if total_frames <= 0:
         return None, None, "total_frames_invalido"
 
@@ -232,6 +250,10 @@ def extract_sequence_from_video(hand_detector, face_detector, video_path, n_fram
     if not cap.isOpened():
         return None, None, "nao_abriu"
 
+    # Cria instâncias dedicadas para este vídeo para garantir timestamps monotônicos corretos
+    hand_detector = create_hand_detector(hand_model_path, num_hands=2)
+    face_detector = create_face_detector(face_model_path, num_faces=1)
+
     hand_sequence = np.zeros((n_frames, 2, 21, 3), dtype=np.float32)
     face_sequence = np.zeros((n_frames, N_FACE_POINTS, 3), dtype=np.float32)
 
@@ -240,29 +262,33 @@ def extract_sequence_from_video(hand_detector, face_detector, video_path, n_fram
     seq_idx = 0
     frame_idx = 0
 
-    while seq_idx < len(indices):
-        ok, frame = cap.read()
-        if not ok:
-            break
+    try:
+        while seq_idx < len(indices):
+            ok, frame = cap.read()
+            if not ok:
+                break
 
-        if frame_idx in target_set:
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if frame_idx in target_set:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                timestamp_ms = int((frame_idx / fps) * 1000)
 
-            hands_arr = extract_hands_from_frame(hand_detector, frame_rgb)
-            if hands_arr.any():
-                any_hand_detected = True
-            hand_sequence[seq_idx] = hands_arr
+                hands_arr = extract_hands_from_frame(hand_detector, frame_rgb, timestamp_ms)
+                if hands_arr.any():
+                    any_hand_detected = True
+                hand_sequence[seq_idx] = hands_arr
 
-            face_arr = extract_face_from_frame(face_detector, frame_rgb)
-            if face_arr.any():
-                any_face_detected = True
-            face_sequence[seq_idx] = face_arr
+                face_arr = extract_face_from_frame(face_detector, frame_rgb, timestamp_ms)
+                if face_arr.any():
+                    any_face_detected = True
+                face_sequence[seq_idx] = face_arr
 
-            seq_idx += 1
+                seq_idx += 1
 
-        frame_idx += 1
-
-    cap.release()
+            frame_idx += 1
+    finally:
+        cap.release()
+        hand_detector.close()
+        face_detector.close()
 
     if seq_idx < len(indices):
         return None, None, "leitura_interrompida"
@@ -285,10 +311,6 @@ def build_dataset_from_zip(zip_path, hand_model_path, face_model_path, annotatio
     entries = find_video_members_in_zip(zip_path, annotations=annotations, filename_regex=filename_regex)
     print(f"Total de videos a processar: {len(entries)}", flush=True)
 
-    print("Carregando os modelos HandLandmarker (2 maos) e FaceLandmarker...", flush=True)
-    hand_detector = create_detector(hand_model_path, num_hands=2)
-    face_detector = create_face_detector(face_model_path, num_faces=1)
-
     noise_guard = redirect_native_stderr_to_devnull() if quiet else contextlib.nullcontext()
 
     fail_f = open(failures_log, "w", newline="", encoding="utf-8") if failures_log else None
@@ -307,7 +329,7 @@ def build_dataset_from_zip(zip_path, hand_model_path, face_model_path, annotatio
                     basename = os.path.basename(member)
 
                     local_path = zf.extract(member, tmpdir)
-                    hand_seq, face_seq, reason = extract_sequence_from_video(hand_detector, face_detector, local_path)
+                    hand_seq, face_seq, reason = extract_sequence_from_video(hand_model_path, face_model_path, local_path)
                     os.remove(local_path)
 
                     if hand_seq is None:
@@ -358,10 +380,6 @@ def build_dataset(dataset_dir, hand_model_path, face_model_path, annotations=Non
 
     print(f"Total de videos a processar: {len(video_paths)}", flush=True)
 
-    print("Carregando os modelos HandLandmarker (2 maos) e FaceLandmarker...", flush=True)
-    hand_detector = create_detector(hand_model_path, num_hands=2)
-    face_detector = create_face_detector(face_model_path, num_faces=1)
-
     noise_guard = redirect_native_stderr_to_devnull() if quiet else contextlib.nullcontext()
 
     fail_f = open(failures_log, "w", newline="", encoding="utf-8") if failures_log else None
@@ -378,7 +396,7 @@ def build_dataset(dataset_dir, hand_model_path, face_model_path, annotations=Non
                 pbar.set_postfix(classe=label, ok=len(X_hands), falhas=failed)
                 basename = os.path.basename(path)
 
-                hand_seq, face_seq, reason = extract_sequence_from_video(hand_detector, face_detector, path)
+                hand_seq, face_seq, reason = extract_sequence_from_video(hand_model_path, face_model_path, path)
                 if hand_seq is None:
                     failed += 1
                     if fail_writer:
@@ -474,3 +492,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    
