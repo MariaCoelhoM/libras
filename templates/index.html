@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Teste do Alfabeto em Libras</title>
+    <title>Teste de Libras</title>
     <style>
         body {
             font-family: sans-serif;
@@ -23,23 +23,59 @@
             max-width: 640px;
             width: 100%;
         }
+        #modo {
+            margin: 16px 0;
+            font-size: 1.1em;
+        }
+        #modo label {
+            margin: 0 12px;
+            cursor: pointer;
+        }
         #resultado {
             font-size: 2em;
             margin-top: 16px;
             min-height: 1.5em;
         }
+        #progresso {
+            color: #4caf50;
+            font-size: 1em;
+            min-height: 1.3em;
+        }
         #status {
             color: #999;
             font-size: 0.9em;
         }
+        button {
+            margin-top: 12px;
+            padding: 8px 16px;
+            font-size: 1em;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <h1>Teste em tempo real - Alfabeto Libras</h1>
+    <h1>Teste em tempo real - Libras</h1>
+
+    <div id="modo">
+        <label><input type="radio" name="modo" value="estatico" checked> Alfabeto (estatico)</label>
+        <label><input type="radio" name="modo" value="dinamico"> Palavras (dinamico)</label>
+    </div>
+
     <div id="container">
         <video id="video" autoplay playsinline muted></video>
     </div>
+
     <div id="resultado">Aguardando camera...</div>
+    <div id="progresso"></div>
+    <button id="btnReiniciar" style="display:none;">Reiniciar sinal</button>
+
+    <div id="frase-container">
+        <h2 id="frase"></h2>
+        <button id="btnEspaco">Espaco</button>
+        <button id="btnApagar">Apagar</button>
+        <button id="btnLimpar">Limpar</button>
+    </div>
+
     <div id="status"></div>
 
     <canvas id="canvas" style="display:none;"></canvas>
@@ -48,7 +84,84 @@
         const video = document.getElementById("video");
         const canvas = document.getElementById("canvas");
         const resultado = document.getElementById("resultado");
+        const progresso = document.getElementById("progresso");
         const status = document.getElementById("status");
+        const btnReiniciar = document.getElementById("btnReiniciar");
+        const fraseContainer = document.getElementById("frase-container");
+        const fraseEl = document.getElementById("frase");
+        const btnEspaco = document.getElementById("btnEspaco");
+        const btnApagar = document.getElementById("btnApagar");
+        const btnLimpar = document.getElementById("btnLimpar");
+
+        let modoAtual = "estatico";
+
+        // Formacao de frase no modo estatico
+        const LEITURAS_PARA_CONFIRMAR = 3; // quantas leituras seguidas iguais pra aceitar a letra
+        let frase = "";
+        let ultimaLetraConfirmada = null; // trava repeticao ate a mao sumir ou trocar de letra
+        let letraAtual = null;
+        let contagemLetraAtual = 0;
+
+        function atualizarFrase() {
+            fraseEl.textContent = frase || "(vazio)";
+        }
+
+        function processarLetraDetectada(label) {
+            if (label === letraAtual) {
+                contagemLetraAtual++;
+            } else {
+                letraAtual = label;
+                contagemLetraAtual = 1;
+            }
+
+            if (contagemLetraAtual >= LEITURAS_PARA_CONFIRMAR && label !== ultimaLetraConfirmada) {
+                frase += label;
+                ultimaLetraConfirmada = label;
+                atualizarFrase();
+            }
+        }
+
+        function processarSemMao() {
+            // mao sumiu do quadro: libera repetir a mesma letra na proxima leitura
+            letraAtual = null;
+            contagemLetraAtual = 0;
+            ultimaLetraConfirmada = null;
+        }
+
+        btnEspaco.addEventListener("click", () => {
+            frase += " ";
+            atualizarFrase();
+        });
+
+        btnApagar.addEventListener("click", () => {
+            frase = frase.slice(0, -1);
+            atualizarFrase();
+        });
+
+        btnLimpar.addEventListener("click", () => {
+            frase = "";
+            atualizarFrase();
+        });
+
+        document.querySelectorAll('input[name="modo"]').forEach((radio) => {
+            radio.addEventListener("change", (e) => {
+                modoAtual = e.target.value;
+                resultado.textContent = "";
+                progresso.textContent = "";
+                btnReiniciar.style.display = modoAtual === "dinamico" ? "inline-block" : "none";
+                fraseContainer.style.display = modoAtual === "estatico" ? "block" : "none";
+                if (modoAtual === "dinamico") {
+                    reiniciarSinal();
+                }
+            });
+        });
+
+        btnReiniciar.addEventListener("click", reiniciarSinal);
+
+        async function reiniciarSinal() {
+            await fetch("/reset_dinamico", { method: "POST" });
+            progresso.textContent = "Buffer reiniciado. Comece o sinal.";
+        }
 
         async function iniciarCamera() {
             try {
@@ -60,16 +173,16 @@
             }
         }
 
-        async function capturarEEnviar() {
-            if (video.videoWidth === 0) return; // camera ainda nao pronta
-
+        function capturarFrame() {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext("2d");
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL("image/jpeg", 0.8);
+        }
 
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-
+        async function classificarEstatico() {
+            const dataUrl = capturarFrame();
             try {
                 const resp = await fetch("/predict", {
                     method: "POST",
@@ -80,11 +193,44 @@
 
                 if (data.detected) {
                     resultado.textContent = `${data.label} (${(data.confidence * 100).toFixed(1)}%)`;
+                    processarLetraDetectada(data.label);
                 } else {
                     resultado.textContent = "Nenhuma mao detectada";
+                    processarSemMao();
                 }
             } catch (err) {
                 status.textContent = "Erro na predicao: " + err.message;
+            }
+        }
+
+        async function classificarDinamico() {
+            const dataUrl = capturarFrame();
+            try {
+                const resp = await fetch("/predict_dinamico", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ image: dataUrl }),
+                });
+                const data = await resp.json();
+
+                if (data.ready) {
+                    resultado.textContent = `${data.label} (${(data.confidence * 100).toFixed(1)}%)`;
+                    progresso.textContent = "Sinal reconhecido. Buffer reiniciado - pode fazer o proximo sinal.";
+                } else {
+                    progresso.textContent = `Capturando... ${data.frames}/${data.total} frames`;
+                }
+            } catch (err) {
+                status.textContent = "Erro na predicao: " + err.message;
+            }
+        }
+
+        async function capturarEEnviar() {
+            if (video.videoWidth === 0) return; // camera ainda nao pronta
+
+            if (modoAtual === "estatico") {
+                await classificarEstatico();
+            } else {
+                await classificarDinamico();
             }
         }
 
