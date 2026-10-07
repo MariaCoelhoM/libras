@@ -46,6 +46,12 @@ def normalize_landmarks(landmarks):
     return centered
 
 def find_class_dirs(dataset_dir):
+    """Retorna uma lista de (label, caminho_da_pasta, split).
+
+    'split' e o nome da pasta de divisao original do dataset (ex. 'train'/'test'),
+    quando o dataset tiver essa estrutura (dataset_dir/train/<label>, dataset_dir/test/<label>).
+    Quando o dataset nao tem essa divisao (dataset_dir/<label> direto), split vem None.
+    """
     entries = sorted(
         d for d in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, d))
     )
@@ -57,7 +63,7 @@ def find_class_dirs(dataset_dir):
         if os.path.isfile(os.path.join(dataset_dir, entry, f))
     )
     if has_images_directly:
-        return [(entry, os.path.join(dataset_dir, entry)) for entry in entries]
+        return [(entry, os.path.join(dataset_dir, entry), None) for entry in entries]
 
     class_dirs = []
     for split in entries:
@@ -65,11 +71,11 @@ def find_class_dirs(dataset_dir):
         for label in sorted(os.listdir(split_path)):
             label_path = os.path.join(split_path, label)
             if os.path.isdir(label_path):
-                class_dirs.append((label, label_path))
+                class_dirs.append((label, label_path, split))
     return class_dirs
 
 def build_dataset(dataset_dir, model_path):
-    X, y = [], []
+    X, y, split_names = [], [], []
     failed = 0
 
     print("Localizando pastas de classe...", flush=True)
@@ -83,13 +89,13 @@ def build_dataset(dataset_dir, model_path):
 
     total_files = sum(
         len([f for f in os.listdir(d) if f.lower().endswith((".jpg", ".jpeg", ".png"))])
-        for _, d in class_dirs
+        for _, d, _ in class_dirs
     )
     print(f"Total de imagens a processar: {total_files}", flush=True)
 
     start = time.time()
     with tqdm(total=total_files, file=sys.stdout, desc="Extraindo landmarks") as pbar:
-        for label, class_dir in class_dirs:
+        for label, class_dir, split in class_dirs:
             files = [f for f in os.listdir(class_dir) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
             pbar.set_postfix(classe=label, ok=len(X), falhas=failed)
 
@@ -102,6 +108,7 @@ def build_dataset(dataset_dir, model_path):
                 else:
                     X.append(normalize_landmarks(landmarks))
                     y.append(label)
+                    split_names.append(split if split is not None else "unico")
 
                 pbar.update(1)
                 pbar.set_postfix(classe=label, ok=len(X), falhas=failed)
@@ -111,7 +118,7 @@ def build_dataset(dataset_dir, model_path):
     print(f"Total de amostras extraidas: {len(X)}")
     print(f"Total de falhas (mao nao detectada): {failed}")
 
-    return np.array(X, dtype=np.float32), np.array(y)
+    return np.array(X, dtype=np.float32), np.array(y), np.array(split_names)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -127,10 +134,11 @@ def main():
             "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
         )
 
-    X, y = build_dataset(args.dataset_dir, args.model_path)
-    np.savez_compressed(args.output, X=X, y=y)
+    X, y, split_names = build_dataset(args.dataset_dir, args.model_path)
+    np.savez_compressed(args.output, X=X, y=y, split=split_names)
     print(f"Salvo em {args.output}")
 
 
 if __name__ == "__main__":
     main()
+    
