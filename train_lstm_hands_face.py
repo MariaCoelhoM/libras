@@ -1,15 +1,15 @@
 import argparse
-import csv
 import json
 import os
 import re
-from collections import Counter
 
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import GroupShuffleSplit, GroupKFold
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report
+
+from libras.training_utils import load_class_filter, extract_signer_ids, log_counts, save_counts_csv
 
 
 def load_features(data_path, use_face=True):
@@ -44,47 +44,6 @@ def load_features(data_path, use_face=True):
     return X, y_raw, paths
 
 
-def load_class_filter(classes_arg):
-    """--classes pode ser uma lista separada por virgula, ou @arquivo.txt (uma classe por linha)."""
-    if classes_arg is None:
-        return None
-    if classes_arg.startswith("@"):
-        with open(classes_arg[1:], encoding="utf-8") as f:
-            return {line.strip() for line in f if line.strip()}
-    return {c.strip() for c in classes_arg.split(",") if c.strip()}
-
-
-def extract_signer_ids(paths, signer_regex):
-    ids = []
-    for p in paths:
-        match = signer_regex.search(str(p))
-        ids.append(match.group(1) if match else "desconhecido")
-    ids = np.array(ids)
-    if "desconhecido" in ids:
-        n = int((ids == "desconhecido").sum())
-        print(f"Aviso: {n} arquivo(s) sem sinalizador identificavel pelo regex - "
-              f"tratados como um grupo unico 'desconhecido'. Ajuste --signer_regex se isso nao fizer sentido.")
-    return ids
-
-
-def log_counts(label, y_raw_subset, counts_by_split):
-    counts = Counter(y_raw_subset.tolist())
-    print(f"\nContagem de amostras - {label}:")
-    for classe, n in sorted(counts.items()):
-        print(f"  {classe}: {n}")
-    counts_by_split[label] = counts
-
-
-def save_counts_csv(path, counts_by_split):
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["divisao", "classe", "quantidade"])
-        for split_name, counts in counts_by_split.items():
-            for classe, n in sorted(counts.items()):
-                writer.writerow([split_name, classe, n])
-    print(f"\nContagem de amostras salva em {path}")
-
-
 def build_model(timesteps, num_features, num_classes):
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(timesteps, num_features)),
@@ -111,7 +70,7 @@ def build_model(timesteps, num_features, num_classes):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", required=True, help="Arquivo .npz gerado por extract_landmarks_video.py")
+    parser.add_argument("--data", required=True, help="Arquivo .npz gerado por extract_landmarks_video_hands_face_minds_libras.py")
     parser.add_argument("--output", default="modelo_palavras.keras", help="Caminho para salvar o modelo treinado")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=16)

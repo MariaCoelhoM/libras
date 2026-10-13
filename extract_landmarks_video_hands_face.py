@@ -10,11 +10,22 @@ import zipfile
 import numpy as np
 import cv2
 import mediapipe as mp
-from mediapipe.tasks import python as mp_tasks
-from mediapipe.tasks.python import vision as mp_vision
 from tqdm import tqdm
 
-from extract_landmarks_video_vlibras import normalize_landmarks, find_class_dirs
+from libras.landmarks import (
+    create_hand_detector,
+    create_face_detector,
+    normalize_landmarks,
+    sample_frame_indices,
+    count_actual_frames,
+    get_rotation,
+    apply_rotation,
+    find_class_dirs_video,
+    load_annotations,
+    find_video_members_in_zip,
+    find_videos_flat_dir,
+    redirect_native_stderr_to_devnull,
+)
 
 FRAMES_POR_VIDEO = 30
 
@@ -66,124 +77,20 @@ def get_enm_landmark_indices():
 ENM_LANDMARK_INDICES = get_enm_landmark_indices()
 N_FACE_POINTS = len(ENM_LANDMARK_INDICES)
 
-
-def create_hand_detector(model_path, num_hands=2):
-    base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
-    options = mp_vision.HandLandmarkerOptions(
-        base_options=base_options,
-        running_mode=mp_vision.RunningMode.VIDEO,
-        num_hands=num_hands,
-        min_hand_detection_confidence=0.3,
-        min_hand_presence_confidence=0.3,
-        min_tracking_confidence=0.3,
-    )
-    return mp_vision.HandLandmarker.create_from_options(options)
+# No MINDS-Libras (camera fixa, sinalizador de corpo inteiro), o rosto ocupa
+# uma fatia pequena do frame e o detector de rosto nao acha ele no frame
+# inteiro. Recortamos a regiao topo-centro (onde o rosto sempre aparece)
+# antes de rodar o FaceLandmarker. Faixas testadas e confirmadas: se algum
+# video tiver enquadramento diferente, ajuste essas fracoes.
+FACE_CROP_TOP, FACE_CROP_BOTTOM = 0.10, 0.45
+FACE_CROP_LEFT, FACE_CROP_RIGHT = 0.30, 0.70
 
 
-def create_face_detector(model_path, num_faces=1):
-    base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
-    options = mp_vision.FaceLandmarkerOptions(
-        base_options=base_options,
-        running_mode=mp_vision.RunningMode.VIDEO,
-        num_faces=num_faces,
-        min_face_detection_confidence=0.3,
-        min_face_presence_confidence=0.3,
-        output_face_blendshapes=False,
-        output_facial_transformation_matrixes=False,
-    )
-    return mp_vision.FaceLandmarker.create_from_options(options)
-
-
-@contextlib.contextmanager
-def redirect_native_stderr_to_devnull():
-    stderr_fd = sys.stderr.fileno()
-    saved_fd = os.dup(stderr_fd)
-    devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    try:
-        sys.stderr.flush()
-        os.dup2(devnull_fd, stderr_fd)
-        yield
-    finally:
-        sys.stderr.flush()
-        os.dup2(saved_fd, stderr_fd)
-        os.close(devnull_fd)
-        os.close(saved_fd)
-
-
-def load_annotations(csv_path):
-    mapping = {}
-    with open(csv_path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            mapping[row["video_name"].strip()] = row["class"].strip()
-    return mapping
-
-
-def label_from_filename(filename, filename_regex):
-    match = filename_regex.match(filename)
-    return match.group(1) if match else None
-
-
-def resolve_label(filename, annotations=None, filename_regex=None):
-    if annotations is not None:
-        return annotations.get(filename)
-    if filename_regex is not None:
-        return label_from_filename(filename, filename_regex)
-    return None
-
-
-def find_video_members_in_zip(zip_path, annotations=None, filename_regex=None):
-    with zipfile.ZipFile(zip_path) as zf:
-        names = zf.namelist()
-
-    use_filename_label = annotations is not None or filename_regex is not None
-
-    entries = []
-    skipped = 0
-    for name in names:
-        if name.endswith("/") or not name.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
-            continue
-
-        if use_filename_label:
-            basename = os.path.basename(name)
-            label = resolve_label(basename, annotations=annotations, filename_regex=filename_regex)
-            if label is None:
-                skipped += 1
-                continue
-        else:
-            parts = name.strip("/").split("/")
-            label = parts[-2] if len(parts) >= 2 else "unknown"
-
-        entries.append((label, name))
-
-    if use_filename_label and skipped:
-        print(f"Aviso: {skipped} video(s) no zip nao identificados (sem correspondencia no CSV/regex, ignorados).", flush=True)
-
-    return entries
-
-
-def find_videos_flat_dir(dataset_dir, annotations=None, filename_regex=None):
-    video_paths = []
-    skipped = 0
-    for filename in os.listdir(dataset_dir):
-        if not filename.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
-            continue
-        label = resolve_label(filename, annotations=annotations, filename_regex=filename_regex)
-        if label is None:
-            skipped += 1
-            continue
-        video_paths.append((label, os.path.join(dataset_dir, filename)))
-
-    if skipped:
-        print(f"Aviso: {skipped} video(s) na pasta nao identificados (sem correspondencia no CSV/regex, ignorados).", flush=True)
-
-    return video_paths
-
-
-def sample_frame_indices(total_frames, n_samples):
-    if total_frames <= n_samples:
-        return list(range(total_frames))
-    return sorted(set(np.linspace(0, total_frames - 1, n_samples).astype(int).tolist()))
+def crop_face_region(frame):
+    h, w = frame.shape[:2]
+    y1, y2 = int(h * FACE_CROP_TOP), int(h * FACE_CROP_BOTTOM)
+    x1, x2 = int(w * FACE_CROP_LEFT), int(w * FACE_CROP_RIGHT)
+    return frame[y1:y2, x1:x2]
 
 
 def extract_hands_from_frame(detector, frame_rgb, timestamp_ms):
@@ -221,27 +128,12 @@ def extract_face_from_frame(detector, frame_rgb, timestamp_ms):
     return face_arr
 
 
-def count_actual_frames(video_path):
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        return 0, 0
-    count = 0
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps <= 0 or np.isnan(fps):
-        fps = 30.0
-    while True:
-        ok, _ = cap.read()
-        if not ok:
-            break
-        count += 1
-    cap.release()
-    return count, fps
-
-
 def extract_sequence_from_video(hand_model_path, face_model_path, video_path, n_frames=FRAMES_POR_VIDEO):
     total_frames, fps = count_actual_frames(video_path)
     if total_frames <= 0:
         return None, None, "total_frames_invalido"
+
+    rotation = get_rotation(video_path)
 
     indices = sample_frame_indices(total_frames, n_frames)
     target_set = set(indices)
@@ -269,6 +161,7 @@ def extract_sequence_from_video(hand_model_path, face_model_path, video_path, n_
                 break
 
             if frame_idx in target_set:
+                frame = apply_rotation(frame, rotation)
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 timestamp_ms = int((frame_idx / fps) * 1000)
 
@@ -277,7 +170,8 @@ def extract_sequence_from_video(hand_model_path, face_model_path, video_path, n_
                     any_hand_detected = True
                 hand_sequence[seq_idx] = hands_arr
 
-                face_arr = extract_face_from_frame(face_detector, frame_rgb, timestamp_ms)
+                face_crop_rgb = cv2.cvtColor(crop_face_region(frame), cv2.COLOR_BGR2RGB)
+                face_arr = extract_face_from_frame(face_detector, face_crop_rgb, timestamp_ms)
                 if face_arr.any():
                     any_face_detected = True
                 face_sequence[seq_idx] = face_arr
@@ -369,7 +263,7 @@ def build_dataset(dataset_dir, hand_model_path, face_model_path, annotations=Non
         video_paths = find_videos_flat_dir(dataset_dir, annotations=annotations, filename_regex=filename_regex)
     else:
         print("Localizando pastas de classe...", flush=True)
-        class_dirs = find_class_dirs(dataset_dir)
+        class_dirs = find_class_dirs_video(dataset_dir)
         print(f"{len(class_dirs)} pastas de classe encontradas.", flush=True)
 
         video_paths = []
@@ -492,5 +386,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
     
