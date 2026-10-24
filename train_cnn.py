@@ -1,40 +1,14 @@
 import argparse
-import csv
-from collections import Counter
+import json
+import os
 
 import numpy as np
 import tensorflow as tf
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import classification_report, confusion_matrix
 
-
-def load_class_filter(classes_arg):
-    """--classes pode ser uma lista separada por virgula, ou @arquivo.txt (uma classe por linha)."""
-    if classes_arg is None:
-        return None
-    if classes_arg.startswith("@"):
-        with open(classes_arg[1:], encoding="utf-8") as f:
-            return {line.strip() for line in f if line.strip()}
-    return {c.strip() for c in classes_arg.split(",") if c.strip()}
-
-
-def log_counts(label, y_raw_subset, counts_by_split):
-    counts = Counter(y_raw_subset.tolist())
-    print(f"\nContagem de amostras - {label}:")
-    for classe, n in sorted(counts.items()):
-        print(f"  {classe}: {n}")
-    counts_by_split[label] = counts
-
-
-def save_counts_csv(path, counts_by_split):
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["divisao", "classe", "quantidade"])
-        for split_name, counts in counts_by_split.items():
-            for classe, n in sorted(counts.items()):
-                writer.writerow([split_name, classe, n])
-    print(f"\nContagem de amostras salva em {path}")
+from libras.experiments import ExperimentLog, set_seed, static_splits, static_train_val
+from libras.features import load_static_features
+from libras.training_utils import load_class_filter, log_counts, save_counts_csv
 
 
 def build_model(num_points, num_channels, num_classes):
@@ -66,17 +40,23 @@ def build_model(num_points, num_channels, num_classes):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True, help="Arquivo .npz gerado por extract_landmarks_imagem.py")
-    parser.add_argument("--output", default="modelo_alfabeto.keras", help="Caminho para salvar o modelo treinado")
+    parser.add_argument("--experiment", default=None, help="Nome do experimento: os resultados vao para <results_dir>/<experiment>/. Se omitido, usa o nome de --output.")
+    parser.add_argument("--results_dir", default="resultados", help="Pasta onde gravar os resultados")
+    parser.add_argument("--output", default=None, help="Se passado, salva o modelo da PRIMEIRA semente neste .keras (o app espera modelo_alfabeto.keras), com _labels.json.")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--val_split", type=float, default=0.15, help="Fracao do treino original usada para validacao (so entra em efeito quando o .npz tem o split train/test original).")
+    parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2], help="Sementes do TensorFlow; o treino e repetido uma vez por semente para estimar a variancia. A divisao dos dados e a original do dataset (fixa).")
+    parser.add_argument("--deterministic", action="store_true", help="Pede operacoes deterministicas ao TensorFlow (mesma semente, mesmo resultado exato; mais lento).")
+    parser.add_argument("--val_split", type=float, default=0.15, help="Fracao do treino original usada para validacao/early stopping")
     parser.add_argument("--classes", default=None, help="Filtra o vocabulario: lista separada por virgula, ou @arquivo.txt com uma classe por linha.")
-    parser.add_argument("--counts_output", default=None, help="Caminho de um .csv para salvar a contagem de amostras por classe e por divisao.")
+    parser.add_argument("--counts_output", default=None, help="(Opcional) copia da contagem de amostras neste .csv. A contagem ja vai para <results_dir>/<experiment>/contagem_amostras.csv.")
     args = parser.parse_args()
 
-    data = np.load(args.data, allow_pickle=True)
-    X, y_raw = data["X"], data["y"]
-    split_names = data["split"] if "split" in data else None
+    experiment = args.experiment or (os.path.splitext(os.path.basename(args.output))[0] if args.output else None)
+    if experiment is None:
+        raise SystemExit("Passe --experiment NOME (ou --output, de onde o nome e tirado).")
+
+    X, y_raw, split_names = load_static_features(args.data)
 
     class_filter = load_class_filter(args.classes)
     if class_filter is not None:
@@ -90,76 +70,56 @@ def main():
     y = encoder.fit_transform(y_raw)
     num_classes = len(encoder.classes_)
 
+    (train_idx, test_idx), = static_splits(y, split_names)
+    fit_idx, val_idx = static_train_val(train_idx, y, args.val_split)
+
     counts_by_split = {}
-
-    tem_split_original = split_names is not None and {"train", "test"}.issubset(set(split_names.tolist()))
-
-    if tem_split_original:
-        print("Usando a divisao original train/test do dataset (nao re-sorteando amostras).")
-        idx_train_full = np.where(split_names == "train")[0]
-        idx_test = np.where(split_names == "test")[0]
-
-        idx_sub_train, idx_sub_val = train_test_split(
-            idx_train_full, test_size=args.val_split, stratify=y[idx_train_full], random_state=42
-        )
-
-        X_train, y_train = X[idx_sub_train], y[idx_sub_train]
-        X_val, y_val = X[idx_sub_val], y[idx_sub_val]
-        X_test, y_test = X[idx_test], y[idx_test]
-
-        log_counts("treino", y_raw[idx_sub_train], counts_by_split)
-        log_counts("validacao", y_raw[idx_sub_val], counts_by_split)
-        log_counts("teste", y_raw[idx_test], counts_by_split)
-    else:
-        print("Aviso: o .npz nao tem a divisao original train/test (ou esta incompleta) - "
-              "fazendo split aleatorio estratificado 70/15/15. Para usar a divisao original do "
-              "dataset, re-extraia os landmarks com o extract_landmarks_imagem.py atualizado.")
-        idx_all = np.arange(len(y))
-        idx_train, idx_temp = train_test_split(idx_all, test_size=0.3, stratify=y, random_state=42)
-        idx_val, idx_test = train_test_split(idx_temp, test_size=0.5, stratify=y[idx_temp], random_state=42)
-
-        X_train, y_train = X[idx_train], y[idx_train]
-        X_val, y_val = X[idx_val], y[idx_val]
-        X_test, y_test = X[idx_test], y[idx_test]
-
-        log_counts("treino", y_raw[idx_train], counts_by_split)
-        log_counts("validacao", y_raw[idx_val], counts_by_split)
-        log_counts("teste", y_raw[idx_test], counts_by_split)
-
-    print(f"\nTreino: {len(X_train)} | Validacao: {len(X_val)} | Teste: {len(X_test)}")
+    log_counts("treino", y_raw[fit_idx], counts_by_split)
+    if val_idx is not None:
+        log_counts("validacao", y_raw[val_idx], counts_by_split)
+    log_counts("teste", y_raw[test_idx], counts_by_split)
+    print(f"\nTreino: {len(fit_idx)} | Validacao: {0 if val_idx is None else len(val_idx)} | Teste: {len(test_idx)}")
     print(f"Classes: {list(encoder.classes_)}")
 
-    model = build_model(num_points=X.shape[1], num_channels=X.shape[2], num_classes=num_classes)
-    model.summary()
+    log = ExperimentLog(experiment, encoder.classes_)
 
-    early_stop = tf.keras.callbacks.EarlyStopping(
-        monitor="val_loss", patience=8, restore_best_weights=True
-    )
+    for run_idx, seed in enumerate(args.seeds):
+        set_seed(seed, args.deterministic)
+        model = build_model(num_points=X.shape[1], num_channels=X.shape[2], num_classes=num_classes)
+        if run_idx == 0:
+            model.summary()
 
-    model.fit(
-        X_train, y_train,
-        validation_data=(X_val, y_val),
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        callbacks=[early_stop],
-    )
+        callbacks, validation_data = [], None
+        if val_idx is not None:
+            validation_data = (X[val_idx], y[val_idx])
+            callbacks.append(tf.keras.callbacks.EarlyStopping(
+                monitor="val_loss", patience=8, restore_best_weights=True))
 
-    test_loss, test_acc = model.evaluate(X_test, y_test)
-    print(f"\nAcuracia no teste: {test_acc:.4f}")
+        history = model.fit(
+            X[fit_idx], y[fit_idx],
+            validation_data=validation_data,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            callbacks=callbacks,
+            verbose=0,
+        )
 
-    y_pred = np.argmax(model.predict(X_test), axis=1)
-    print("\nMatriz de confusao:")
-    print(confusion_matrix(y_test, y_pred))
-    print("\nRelatorio de classificacao:")
-    print(classification_report(y_test, y_pred, target_names=encoder.classes_))
+        y_pred = np.argmax(model.predict(X[test_idx], verbose=0), axis=1)
+        log.add_run(0, seed, y[test_idx], y_pred,
+                    epocas_treinadas=len(history.history["loss"]), n_treino=int(len(fit_idx)))
 
+        if run_idx == 0 and args.output:
+            model.save(args.output)
+            with open(os.path.splitext(args.output)[0] + "_labels.json", "w") as f:
+                json.dump(list(encoder.classes_), f, ensure_ascii=False)
+            print(f"Modelo da primeira semente salvo em {args.output}")
+        tf.keras.backend.clear_session()
+
+    log.print_report()
+    log.save(args.results_dir, {**vars(args), "divisao": "original train/test do dataset"}, counts_by_split)
     if args.counts_output:
         save_counts_csv(args.counts_output, counts_by_split)
-
-    model.save(args.output)
-    print(f"Modelo salvo em {args.output}")
 
 
 if __name__ == "__main__":
     main()
-    

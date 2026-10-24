@@ -1,241 +1,179 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <title>Teste de Libras</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: #111;
-            color: #eee;
-            margin: 0;
-            padding: 20px;
-        }
-        #container {
-            position: relative;
-        }
-        video {
-            transform: scaleX(-1); /* espelha, fica mais natural */
-            border-radius: 8px;
-            max-width: 640px;
-            width: 100%;
-        }
-        #modo {
-            margin: 16px 0;
-            font-size: 1.1em;
-        }
-        #modo label {
-            margin: 0 12px;
-            cursor: pointer;
-        }
-        #resultado {
-            font-size: 2em;
-            margin-top: 16px;
-            min-height: 1.5em;
-        }
-        #progresso {
-            color: #4caf50;
-            font-size: 1em;
-            min-height: 1.3em;
-        }
-        #status {
-            color: #999;
-            font-size: 0.9em;
-        }
-        button {
-            margin-top: 12px;
-            padding: 8px 16px;
-            font-size: 1em;
-            cursor: pointer;
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Libras - demo</title>
+<style>
+  :root { --bg: #ffffff; --fg: #1b1b1f; --muted: #6b6b76; --card: #f1f2f5; --accent: #2563eb; --accent-fg: #ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16171a; --fg: #ececf0; --muted: #9a9aa5; --card: #23242a; --accent: #60a5fa; --accent-fg: #0b0c0e; }
+  }
+  body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.25rem; margin: 0 0 12px; }
+  .modos { display: flex; gap: 8px; margin-bottom: 12px; }
+  button { font: inherit; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--muted); background: var(--card); color: var(--fg); cursor: pointer; }
+  button[aria-pressed="true"], #gravar { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .camera { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 12px; overflow: hidden; }
+  video { width: 100%; height: 100%; display: block; transform: scaleX(-1); } /* espelho so na tela */
+  .guia { position: absolute; left: 30%; top: 10%; width: 40%; height: 35%; border: 2px dashed rgba(255, 255, 255, 0.7); border-radius: 8px; pointer-events: none; }
+  .guia span { position: absolute; top: -22px; left: 0; font-size: 0.75rem; color: #fff; text-shadow: 0 0 4px #000; }
+  .painel { background: var(--card); border-radius: 12px; padding: 14px; margin-top: 12px; }
+  #resultado { font-size: 2rem; font-weight: 600; min-height: 2.4rem; }
+  #confianca, #status, #dica { color: var(--muted); font-size: 0.9rem; margin: 4px 0 0; }
+  #gravar { margin-top: 10px; }
+</style>
 </head>
 <body>
-    <h1>Teste em tempo real - Libras</h1>
+<main>
+  <h1>Libras - reconhecimento ao vivo</h1>
 
-    <div id="modo">
-        <label><input type="radio" name="modo" value="estatico" checked> Alfabeto (estatico)</label>
-        <label><input type="radio" name="modo" value="dinamico"> Palavras (dinamico)</label>
-    </div>
+  <div class="modos">
+    <button id="modo-estatico" aria-pressed="true">Alfabeto (estatico)</button>
+    <button id="modo-dinamico" aria-pressed="false">Palavras (dinamico)</button>
+  </div>
 
-    <div id="container">
-        <video id="video" autoplay playsinline muted></video>
-    </div>
+  <div class="camera" id="camera">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="guia" id="guia" hidden><span>rosto aqui</span></div>
+  </div>
 
-    <div id="resultado">Aguardando camera...</div>
-    <div id="progresso"></div>
-    <button id="btnReiniciar" style="display:none;">Reiniciar sinal</button>
+  <div class="painel">
+    <div id="resultado">-</div>
+    <p id="confianca"></p>
+    <p id="status">Iniciando a camera...</p>
+    <button id="gravar" hidden>Gravar sinal</button>
+    <p id="dica" hidden>Fique centralizado, com o rosto dentro da caixa tracejada e os ombros visiveis. Clique em "Gravar sinal", espere a contagem e faca o sinal inteiro.</p>
+  </div>
+</main>
 
-    <div id="frase-container">
-        <h2 id="frase"></h2>
-        <button id="btnEspaco">Espaco</button>
-        <button id="btnApagar">Apagar</button>
-        <button id="btnLimpar">Limpar</button>
-    </div>
+<script>
+  const TOTAL_FRAMES = 30;     // o modelo espera 30 frames por sinal
+  const INTERVALO_MS = 100;    // intervalo entre frames na gravacao (30 frames = ~3 s)
+  const INTERVALO_ESTATICO_MS = 300;
 
-    <div id="status"></div>
+  const video = document.getElementById("video");
+  const camera = document.getElementById("camera");
+  const guia = document.getElementById("guia");
+  const resultadoEl = document.getElementById("resultado");
+  const confiancaEl = document.getElementById("confianca");
+  const statusEl = document.getElementById("status");
+  const gravarBtn = document.getElementById("gravar");
+  const dicaEl = document.getElementById("dica");
+  const modoEstaticoBtn = document.getElementById("modo-estatico");
+  const modoDinamicoBtn = document.getElementById("modo-dinamico");
+  const canvas = document.createElement("canvas");
 
-    <canvas id="canvas" style="display:none;"></canvas>
+  let modo = "estatico";
+  let gravando = false;
 
-    <script>
-        const video = document.getElementById("video");
-        const canvas = document.getElementById("canvas");
-        const resultado = document.getElementById("resultado");
-        const progresso = document.getElementById("progresso");
-        const status = document.getElementById("status");
-        const btnReiniciar = document.getElementById("btnReiniciar");
-        const fraseContainer = document.getElementById("frase-container");
-        const fraseEl = document.getElementById("frase");
-        const btnEspaco = document.getElementById("btnEspaco");
-        const btnApagar = document.getElementById("btnApagar");
-        const btnLimpar = document.getElementById("btnLimpar");
+  const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-        let modoAtual = "estatico";
+  function mostrar(rotulo, confianca) {
+    resultadoEl.textContent = rotulo;
+    confiancaEl.textContent = confianca == null ? "" : "confianca: " + (confianca * 100).toFixed(0) + "%";
+  }
 
-        // Formacao de frase no modo estatico
-        const LEITURAS_PARA_CONFIRMAR = 3; // quantas leituras seguidas iguais pra aceitar a letra
-        let frase = "";
-        let ultimaLetraConfirmada = null; // trava repeticao ate a mao sumir ou trocar de letra
-        let letraAtual = null;
-        let contagemLetraAtual = 0;
+  function frameBase64() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    // Sem espelhar: o modelo foi treinado com videos nao espelhados
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    return canvas.toDataURL("image/jpeg", 0.8);
+  }
 
-        function atualizarFrase() {
-            fraseEl.textContent = frase || "(vazio)";
+  async function post(url, corpo) {
+    const resposta = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo || {}),
+    });
+    if (!resposta.ok) throw new Error("erro " + resposta.status + " em " + url);
+    return resposta.json();
+  }
+
+  async function iniciarCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      video.srcObject = stream;
+      await video.play();
+      camera.style.aspectRatio = video.videoWidth + " / " + video.videoHeight;
+      statusEl.textContent = "Camera pronta.";
+    } catch (e) {
+      statusEl.textContent = "Nao foi possivel acessar a camera: " + e.message;
+    }
+  }
+
+  function trocarModo(novo) {
+    modo = novo;
+    modoEstaticoBtn.setAttribute("aria-pressed", novo === "estatico");
+    modoDinamicoBtn.setAttribute("aria-pressed", novo === "dinamico");
+    gravarBtn.hidden = guia.hidden = dicaEl.hidden = novo !== "dinamico";
+    mostrar("-", null);
+    statusEl.textContent = novo === "estatico" ? "Mostre uma letra do alfabeto." : "Pronto para gravar.";
+  }
+
+  async function loopEstatico() {
+    while (true) {
+      if (modo === "estatico" && video.readyState >= 2) {
+        try {
+          const d = await post("/predict", { image: frameBase64() });
+          if (d.detected) {
+            mostrar(d.label, d.confidence);
+            statusEl.textContent = "Mao detectada.";
+          } else {
+            mostrar("-", null);
+            statusEl.textContent = "Mao nao detectada.";
+          }
+        } catch (e) {
+          statusEl.textContent = e.message;
+          await dormir(1000);
         }
+      }
+      await dormir(INTERVALO_ESTATICO_MS);
+    }
+  }
 
-        function processarLetraDetectada(label) {
-            if (label === letraAtual) {
-                contagemLetraAtual++;
-            } else {
-                letraAtual = label;
-                contagemLetraAtual = 1;
-            }
-
-            if (contagemLetraAtual >= LEITURAS_PARA_CONFIRMAR && label !== ultimaLetraConfirmada) {
-                frase += label;
-                ultimaLetraConfirmada = label;
-                atualizarFrase();
-            }
+  async function gravar() {
+    if (gravando) return;
+    gravando = true;
+    gravarBtn.disabled = true;
+    mostrar("-", null);
+    try {
+      await post("/reset_dinamico");
+      for (let i = 3; i > 0; i--) {
+        statusEl.textContent = "Prepare-se... " + i;
+        await dormir(1000);
+      }
+      for (let n = 1; n <= TOTAL_FRAMES; n++) {
+        const inicio = performance.now();
+        statusEl.textContent = "Faca o sinal! frames " + n + "/" + TOTAL_FRAMES;
+        const d = await post("/predict_dinamico", { image: frameBase64() });
+        if (d.ready) {
+          mostrar(d.label, d.confidence);
+          statusEl.textContent = "Pronto. Clique em gravar para tentar de novo.";
+          break;
         }
+        await dormir(Math.max(0, INTERVALO_MS - (performance.now() - inicio)));
+      }
+    } catch (e) {
+      statusEl.textContent = "Erro: " + e.message;
+    } finally {
+      gravando = false;
+      gravarBtn.disabled = false;
+    }
+  }
 
-        function processarSemMao() {
-            // mao sumiu do quadro: libera repetir a mesma letra na proxima leitura
-            letraAtual = null;
-            contagemLetraAtual = 0;
-            ultimaLetraConfirmada = null;
-        }
+  modoEstaticoBtn.addEventListener("click", () => trocarModo("estatico"));
+  modoDinamicoBtn.addEventListener("click", () => trocarModo("dinamico"));
+  gravarBtn.addEventListener("click", gravar);
 
-        btnEspaco.addEventListener("click", () => {
-            frase += " ";
-            atualizarFrase();
-        });
-
-        btnApagar.addEventListener("click", () => {
-            frase = frase.slice(0, -1);
-            atualizarFrase();
-        });
-
-        btnLimpar.addEventListener("click", () => {
-            frase = "";
-            atualizarFrase();
-        });
-
-        document.querySelectorAll('input[name="modo"]').forEach((radio) => {
-            radio.addEventListener("change", (e) => {
-                modoAtual = e.target.value;
-                resultado.textContent = "";
-                progresso.textContent = "";
-                btnReiniciar.style.display = modoAtual === "dinamico" ? "inline-block" : "none";
-                fraseContainer.style.display = modoAtual === "estatico" ? "block" : "none";
-                if (modoAtual === "dinamico") {
-                    reiniciarSinal();
-                }
-            });
-        });
-
-        btnReiniciar.addEventListener("click", reiniciarSinal);
-
-        async function reiniciarSinal() {
-            await fetch("/reset_dinamico", { method: "POST" });
-            progresso.textContent = "Buffer reiniciado. Comece o sinal.";
-        }
-
-        async function iniciarCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                status.textContent = "Camera conectada. Classificando a cada 500ms...";
-            } catch (err) {
-                status.textContent = "Erro ao acessar a camera: " + err.message;
-            }
-        }
-
-        function capturarFrame() {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            return canvas.toDataURL("image/jpeg", 0.8);
-        }
-
-        async function classificarEstatico() {
-            const dataUrl = capturarFrame();
-            try {
-                const resp = await fetch("/predict", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ image: dataUrl }),
-                });
-                const data = await resp.json();
-
-                if (data.detected) {
-                    resultado.textContent = `${data.label} (${(data.confidence * 100).toFixed(1)}%)`;
-                    processarLetraDetectada(data.label);
-                } else {
-                    resultado.textContent = "Nenhuma mao detectada";
-                    processarSemMao();
-                }
-            } catch (err) {
-                status.textContent = "Erro na predicao: " + err.message;
-            }
-        }
-
-        async function classificarDinamico() {
-            const dataUrl = capturarFrame();
-            try {
-                const resp = await fetch("/predict_dinamico", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ image: dataUrl }),
-                });
-                const data = await resp.json();
-
-                if (data.ready) {
-                    resultado.textContent = `${data.label} (${(data.confidence * 100).toFixed(1)}%)`;
-                    progresso.textContent = "Sinal reconhecido. Buffer reiniciado - pode fazer o proximo sinal.";
-                } else {
-                    progresso.textContent = `Capturando... ${data.frames}/${data.total} frames`;
-                }
-            } catch (err) {
-                status.textContent = "Erro na predicao: " + err.message;
-            }
-        }
-
-        async function capturarEEnviar() {
-            if (video.videoWidth === 0) return; // camera ainda nao pronta
-
-            if (modoAtual === "estatico") {
-                await classificarEstatico();
-            } else {
-                await classificarDinamico();
-            }
-        }
-
-        iniciarCamera();
-        setInterval(capturarEEnviar, 500);
-    </script>
+  iniciarCamera().then(() => {
+    trocarModo("estatico");
+    loopEstatico();
+  });
+</script>
 </body>
 </html>

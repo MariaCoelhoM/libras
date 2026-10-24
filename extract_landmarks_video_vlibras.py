@@ -11,36 +11,16 @@ import cv2
 import mediapipe as mp
 from tqdm import tqdm
 
-from extract_landmarks_imagem import create_detector, normalize_landmarks, find_class_dirs
+from libras.landmarks import (
+    create_detector,
+    normalize_landmarks,
+    sample_frame_indices,
+    find_class_dirs_video,
+    load_annotations,
+    redirect_native_stderr_to_devnull,
+)
 
 FRAMES_POR_VIDEO = 30
-
-
-@contextlib.contextmanager
-def redirect_native_stderr_to_devnull():
-    stderr_fd = sys.stderr.fileno()
-    saved_fd = os.dup(stderr_fd)
-    devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    try:
-        sys.stderr.flush()
-        os.dup2(devnull_fd, stderr_fd)
-        yield
-    finally:
-        sys.stderr.flush()
-        os.dup2(saved_fd, stderr_fd)
-        os.close(devnull_fd)
-        os.close(saved_fd)
-
-
-def load_annotations(csv_path):
-    mapping = {}
-    with open(csv_path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            video_name = row["video_name"].strip()
-            label = row["class"].strip()
-            mapping[video_name] = label
-    return mapping
 
 
 def find_video_members_in_zip(zip_path, annotations=None):
@@ -87,12 +67,6 @@ def find_videos_flat_dir(dataset_dir, annotations):
         print(f"Aviso: {skipped} video(s) na pasta nao encontrados no annotations.csv (ignorados).", flush=True)
 
     return video_paths
-
-
-def sample_frame_indices(total_frames, n_samples):
-    if total_frames <= n_samples:
-        return list(range(total_frames))
-    return sorted(set(np.linspace(0, total_frames - 1, n_samples).astype(int).tolist()))
 
 
 def extract_hands_from_frame(detector, frame_rgb):
@@ -157,7 +131,7 @@ def extract_sequence_from_video(detector, video_path, n_frames=FRAMES_POR_VIDEO)
 
 
 def build_dataset_from_zip(zip_path, model_path, annotations=None, quiet=False, failures_log=None):
-    X, y = [], []
+    X, y, paths = [], [], []
     failed = 0
 
     print("Listando videos dentro do zip...", flush=True)
@@ -182,6 +156,7 @@ def build_dataset_from_zip(zip_path, model_path, annotations=None, quiet=False, 
             with tqdm(total=len(entries), file=sys.stdout, desc="Extraindo sequencias") as pbar, noise_guard:
                 for label, member in entries:
                     pbar.set_postfix(classe=label, ok=len(X), falhas=failed)
+                    basename = os.path.basename(member)
 
                     local_path = zf.extract(member, tmpdir)
                     sequence, reason = extract_sequence_from_video(detector, local_path)
@@ -195,6 +170,7 @@ def build_dataset_from_zip(zip_path, model_path, annotations=None, quiet=False, 
                     else:
                         X.append(sequence)
                         y.append(label)
+                        paths.append(basename)
 
                     pbar.update(1)
                     pbar.set_postfix(classe=label, ok=len(X), falhas=failed)
@@ -208,10 +184,10 @@ def build_dataset_from_zip(zip_path, model_path, annotations=None, quiet=False, 
     print(f"Total de sequencias extraidas: {len(X)}")
     print(f"Total de falhas (nenhuma mao detectada no video): {failed}")
 
-    return np.array(X, dtype=np.float32), np.array(y)
+    return np.array(X, dtype=np.float32), np.array(y), np.array(paths)
 
 def build_dataset(dataset_dir, model_path, annotations=None, quiet=False, failures_log=None):
-    X, y = [], []
+    X, y, paths = [], [], []
     failed = 0
 
     if annotations is not None:
@@ -219,7 +195,7 @@ def build_dataset(dataset_dir, model_path, annotations=None, quiet=False, failur
         video_paths = find_videos_flat_dir(dataset_dir, annotations)
     else:
         print("Localizando pastas de classe...", flush=True)
-        class_dirs = find_class_dirs(dataset_dir)
+        class_dirs = find_class_dirs_video(dataset_dir)
         print(f"{len(class_dirs)} pastas de classe encontradas.", flush=True)
 
         video_paths = []
@@ -247,6 +223,7 @@ def build_dataset(dataset_dir, model_path, annotations=None, quiet=False, failur
         with tqdm(total=len(video_paths), file=sys.stdout, desc="Extraindo sequencias") as pbar, noise_guard:
             for label, path in video_paths:
                 pbar.set_postfix(classe=label, ok=len(X), falhas=failed)
+                basename = os.path.basename(path)
 
                 sequence, reason = extract_sequence_from_video(detector, path)
                 if sequence is None:
@@ -257,6 +234,7 @@ def build_dataset(dataset_dir, model_path, annotations=None, quiet=False, failur
                 else:
                     X.append(sequence)
                     y.append(label)
+                    paths.append(basename)
 
                 pbar.update(1)
                 pbar.set_postfix(classe=label, ok=len(X), falhas=failed)
@@ -270,7 +248,7 @@ def build_dataset(dataset_dir, model_path, annotations=None, quiet=False, failur
     print(f"Total de sequencias extraidas: {len(X)}")
     print(f"Total de falhas (nenhuma mao detectada no video): {failed}")
 
-    return np.array(X, dtype=np.float32), np.array(y)
+    return np.array(X, dtype=np.float32), np.array(y), np.array(paths)
 
 
 def main():
@@ -299,14 +277,13 @@ def main():
         print(f"{len(annotations)} entradas carregadas do CSV.", flush=True)
 
     if args.zip_path:
-        X, y = build_dataset_from_zip(args.zip_path, args.model_path, annotations=annotations, quiet=args.quiet, failures_log=args.failures_log)
+        X, y, paths = build_dataset_from_zip(args.zip_path, args.model_path, annotations=annotations, quiet=args.quiet, failures_log=args.failures_log)
     else:
-        X, y = build_dataset(args.dataset_dir, args.model_path, annotations=annotations, quiet=args.quiet, failures_log=args.failures_log)
+        X, y, paths = build_dataset(args.dataset_dir, args.model_path, annotations=annotations, quiet=args.quiet, failures_log=args.failures_log)
 
-    np.savez_compressed(args.output, X=X, y=y)
+    np.savez_compressed(args.output, X=X, y=y, paths=paths)
     print(f"Salvo em {args.output}")
 
 
 if __name__ == "__main__":
     main()
-    

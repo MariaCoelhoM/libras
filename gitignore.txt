@@ -1,0 +1,3 @@
+minds-libras/
+*.zip
+*.mp4

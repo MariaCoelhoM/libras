@@ -4,18 +4,9 @@ import sys
 import time
 import numpy as np
 import mediapipe as mp
-from mediapipe.tasks import python as mp_tasks
-from mediapipe.tasks.python import vision as mp_vision
 from tqdm import tqdm
 
-def create_detector(model_path, num_hands=1):
-    base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
-    options = mp_vision.HandLandmarkerOptions(
-        base_options=base_options,
-        num_hands=num_hands,
-        running_mode=mp_vision.RunningMode.IMAGE,
-    )
-    return mp_vision.HandLandmarker.create_from_options(options)
+from libras.landmarks import create_detector, normalize_landmarks
 
 def extract_landmarks_from_mp_image(detector, mp_image):
     result = detector.detect(mp_image)
@@ -37,20 +28,15 @@ def extract_landmarks_from_image(detector, image_path):
 
     return extract_landmarks_from_mp_image(detector, image)
 
-def normalize_landmarks(landmarks):
-    wrist = landmarks[0].copy()
-    centered = landmarks - wrist
-    max_dist = np.linalg.norm(centered, axis=1).max()
-    if max_dist > 0:
-        centered = centered / max_dist
-    return centered
-
 def find_class_dirs(dataset_dir):
     """Retorna uma lista de (label, caminho_da_pasta, split).
 
     'split' e o nome da pasta de divisao original do dataset (ex. 'train'/'test'),
     quando o dataset tiver essa estrutura (dataset_dir/train/<label>, dataset_dir/test/<label>).
     Quando o dataset nao tem essa divisao (dataset_dir/<label> direto), split vem None.
+
+    Especifica do alfabeto (preserva split) - por isso nao mora em libras/landmarks.py,
+    que tem a versao para video (find_class_dirs_video, sem nocao de split).
     """
     entries = sorted(
         d for d in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, d))
@@ -141,4 +127,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
