@@ -3,79 +3,274 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Libras - demo</title>
+<title>Libras · Tradutor ao vivo</title>
 <style>
-  :root { --bg: #ffffff; --fg: #1b1b1f; --muted: #6b6b76; --card: #f1f2f5; --accent: #2563eb; --accent-fg: #ffffff; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #16171a; --fg: #ececf0; --muted: #9a9aa5; --card: #23242a; --accent: #60a5fa; --accent-fg: #0b0c0e; }
+  :root {
+    --bg: #f4f6f8; --surface: #ffffff; --fg: #111827; --muted: #6b7280; --line: #e3e7ec;
+    --accent: #0f766e; --accent-soft: #d8f1ed; --accent-fg: #ffffff; --ok: #16a34a; --off: #9ca3af;
   }
-  body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); }
-  main { max-width: 720px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 1.25rem; margin: 0 0 12px; }
-  .modos { display: flex; gap: 8px; margin-bottom: 12px; }
-  button { font: inherit; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--muted); background: var(--card); color: var(--fg); cursor: pointer; }
-  button[aria-pressed="true"], #gravar { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .camera { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 12px; overflow: hidden; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1012; --surface: #161a1e; --fg: #eef1f4; --muted: #98a2ae; --line: #262c32;
+      --accent: #2dd4bf; --accent-soft: #11302d; --accent-fg: #06201d; --ok: #4ade80; --off: #5b6670;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; line-height: 1.5; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 40px; }
+
+  header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 0.95rem; }
+
+  .modos { display: inline-flex; padding: 4px; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; }
+  .modos button { border: 0; background: transparent; color: var(--muted); padding: 8px 18px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
+  .modos button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+
+  .layout { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px; }
+  .card h2 { font-size: 0.95rem; font-weight: 600; color: var(--muted); margin: 0 0 10px; }
+
+  /* camera */
+  .camera { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 14px; overflow: hidden; }
   video { width: 100%; height: 100%; display: block; transform: scaleX(-1); } /* espelho so na tela */
-  .guia { position: absolute; left: 30%; top: 10%; width: 40%; height: 35%; border: 2px dashed rgba(255, 255, 255, 0.7); border-radius: 8px; pointer-events: none; }
-  .guia span { position: absolute; top: -22px; left: 0; font-size: 0.75rem; color: #fff; text-shadow: 0 0 4px #000; }
-  .painel { background: var(--card); border-radius: 12px; padding: 14px; margin-top: 12px; }
-  #resultado { font-size: 2rem; font-weight: 600; min-height: 2.4rem; }
-  #confianca, #status, #dica { color: var(--muted); font-size: 0.9rem; margin: 4px 0 0; }
-  #gravar { margin-top: 10px; }
+  .guia { position: absolute; left: 30%; top: 10%; width: 40%; height: 35%; border: 2px dashed rgba(255, 255, 255, 0.75); border-radius: 10px; pointer-events: none; }
+  .guia span { position: absolute; top: -24px; left: 0; font-size: 0.8rem; color: #fff; text-shadow: 0 0 4px #000; }
+  .pilula { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 0.82rem; backdrop-filter: blur(6px); }
+  .pilula i { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
+  .pilula.ativa i { background: var(--ok); }
+
+  /* letra detectada com anel de progresso */
+  .detector { position: absolute; left: 12px; bottom: 12px; width: 92px; height: 92px; border-radius: 50%; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); display: grid; place-items: center; }
+  .detector svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .detector circle { fill: none; stroke-width: 5; }
+  .detector .trilho { stroke: rgba(255, 255, 255, 0.2); }
+  .detector .barra { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 251.3; stroke-dashoffset: 251.3; transition: stroke-dashoffset .25s linear; }
+  .detector.cheio .barra { stroke: var(--ok); }
+  .detector b { font-size: 2.4rem; color: #fff; font-weight: 700; }
+  .detector b.vazio { color: rgba(255, 255, 255, 0.4); }
+
+  /* frase */
+  .frase { min-height: 130px; padding: 16px 18px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); font-size: 2rem; font-weight: 600; letter-spacing: 0.02em; white-space: pre-wrap; word-break: break-word; }
+  .frase.vazia #fraseTexto::before { content: "Sua frase aparece aqui"; color: var(--muted); font-weight: 400; font-size: 1.1rem; letter-spacing: 0; }
+  .cursor { display: inline-block; width: 3px; height: 1.9rem; margin-left: 2px; vertical-align: text-bottom; background: var(--accent); animation: piscar 1s steps(1) infinite; }
+  @keyframes piscar { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } .detector .barra { transition: none; } }
+
+  .acoes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+  .acoes button, #gravar { font: inherit; font-weight: 600; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; transition: background .15s; }
+  .acoes button:hover { background: var(--bg); }
+  .acoes .principal, #gravar { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .acoes .principal:hover { background: var(--accent); filter: brightness(1.08); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 420px) { .acoes { grid-template-columns: repeat(2, 1fr); } }
+
+  .ajuda { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); font-size: 0.9rem; }
+  .ajuda p { margin: 0; }
+  .ajuda p + p { margin-top: 4px; color: var(--muted); }
+
+  /* roteador (modo automatico) */
+  .roteador { margin-top: 14px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); }
+  .rotas { display: flex; gap: 8px; }
+  .chip { flex: 1; text-align: center; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; font-weight: 600; transition: background .15s, color .15s; }
+  .chip.ativo { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .medidor { height: 8px; margin-top: 12px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .medidor div { height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+  .roteador p, #diagnostico, #top3 { margin: 8px 0 0; color: var(--muted); font-size: 0.85rem; }
+  #rotaPalavra { margin-top: 8px; font-size: 1.3rem; font-weight: 700; }
+
+  /* palavras */
+  #resultado { font-size: 2.4rem; font-weight: 700; min-height: 3.2rem; }
+  #confianca { color: var(--muted); margin: 0 0 14px; min-height: 1.5rem; }
+  #gravar { width: 100%; padding: 14px; }
+  #progresso { margin: 0 0 12px; }
+  #dica { color: var(--muted); font-size: 0.9rem; margin: 12px 0 0; }
+
+  #status, #latencia { color: var(--muted); font-size: 0.9rem; margin: 14px 2px 0; }
+  #latencia { margin-top: 2px; font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Libras - reconhecimento ao vivo</h1>
+  <header>
+    <div>
+      <h1>Libras ao vivo</h1>
+      <p>Reconhecimento de sinais pela câmera</p>
+    </div>
+    <div class="modos">
+      <button id="modo-estatico" aria-pressed="true">Alfabeto</button>
+      <button id="modo-dinamico" aria-pressed="false">Palavras</button>
+      <button id="modo-auto" aria-pressed="false">Automático</button>
+    </div>
+  </header>
 
-  <div class="modos">
-    <button id="modo-estatico" aria-pressed="true">Alfabeto (estatico)</button>
-    <button id="modo-dinamico" aria-pressed="false">Palavras (dinamico)</button>
-  </div>
+  <div class="layout">
+    <section class="card">
+      <h2>Câmera</h2>
+      <div class="camera" id="camera">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="guia" id="guia" hidden><span>rosto aqui</span></div>
+        <div class="pilula" id="pilula"><i></i><span id="pilulaTexto">Iniciando...</span></div>
+        <div class="detector" id="detector" hidden>
+          <svg viewBox="0 0 92 92"><circle class="trilho" cx="46" cy="46" r="40"/><circle class="barra" id="barra" cx="46" cy="46" r="40"/></svg>
+          <b id="letra" class="vazio">-</b>
+        </div>
+      </div>
+      <p id="status">Iniciando a câmera...</p>
+      <p id="latencia"></p>
+    </section>
 
-  <div class="camera" id="camera">
-    <video id="video" autoplay playsinline muted></video>
-    <div class="guia" id="guia" hidden><span>rosto aqui</span></div>
-  </div>
+    <section class="card" id="painel-estatico">
+      <h2>Sua frase</h2>
+      <div class="frase vazia" id="frase"><span id="fraseTexto"></span><span class="cursor"></span></div>
+      <div class="acoes">
+        <button id="btn-espaco" class="principal">Espaço</button>
+        <button id="btn-apagar">Apagar</button>
+        <button id="btn-limpar">Limpar</button>
+        <button id="btn-falar">Falar</button>
+      </div>
+      <div class="roteador" id="roteador" hidden>
+        <div class="rotas"><span class="chip ativo" id="chip-cnn">CNN · letras</span><span class="chip" id="chip-lstm">LSTM · palavras</span></div>
+        <div class="medidor"><div id="medidorBarra"></div></div>
+        <p id="rotaTexto">Movimento: -</p>
+        <div id="rotaPalavra"></div>
+        <p id="rotaConf"></p>
+        <p id="rotaDiag"></p>
+      </div>
+      <div class="ajuda" id="ajuda-estatico">
+        <p>Faça uma letra e mantenha por cerca de 1 segundo: ela entra na frase sozinha.</p>
+        <p>Para repetir a mesma letra, tire a mão da câmera e mostre de novo. Atalhos: barra de espaço e Backspace.</p>
+      </div>
+      <div class="ajuda" id="ajuda-auto" hidden>
+        <p>Mão parada: o app lê letras. Mão em movimento: ele entende que é uma palavra, lê o sinal inteiro e acrescenta na frase.</p>
+        <p>Fique com o rosto dentro da caixa tracejada e os ombros visíveis. Depois de uma palavra, aguarde a análise terminar.</p>
+      </div>
+    </section>
 
-  <div class="painel">
-    <div id="resultado">-</div>
-    <p id="confianca"></p>
-    <p id="status">Iniciando a camera...</p>
-    <button id="gravar" hidden>Gravar sinal</button>
-    <p id="dica" hidden>Fique centralizado, com o rosto dentro da caixa tracejada e os ombros visiveis. Clique em "Gravar sinal", espere a contagem e faca o sinal inteiro.</p>
+    <section class="card" id="painel-dinamico" hidden>
+      <h2>Palavra reconhecida</h2>
+      <div id="resultado">-</div>
+      <p id="confianca"></p>
+      <p id="top3"></p>
+      <p id="diagnostico"></p>
+      <div class="medidor" id="progresso"><div id="progressoBarra"></div></div>
+      <button id="gravar">Gravar sinal</button>
+      <p id="dica">Fique centralizado, com o rosto dentro da caixa tracejada e os ombros visíveis. Clique em "Gravar sinal", espere a contagem e faça o sinal inteiro.</p>
+    </section>
   </div>
 </main>
 
 <script>
-  const TOTAL_FRAMES = 30;     // o modelo espera 30 frames por sinal
-  const INTERVALO_MS = 100;    // intervalo entre frames na gravacao (30 frames = ~3 s)
-  const INTERVALO_ESTATICO_MS = 300;
+  // ---- Ajustes ----
+  const TOTAL_FRAMES = 30;            // o modelo dinamico espera 30 frames por sinal
+  const INTERVALO_MS = 100;           // 1 quadro a cada 100 ms: 30 quadros = 3 s reais
+  const SINAL_MAX_MS = 4000;          // no modo automatico, tempo maximo de um sinal
+  const INTERVALO_ESTATICO_MS = 300;  // intervalo entre previsoes do alfabeto
+  const FRAMES_PARA_ADICIONAR = 4;    // 4 previsoes iguais seguidas = ~1,2 s segurando a letra
+  const ANEL = 251.3;                 // circunferencia do anel de progresso (2 * pi * 40)
 
   const video = document.getElementById("video");
   const camera = document.getElementById("camera");
   const guia = document.getElementById("guia");
+  const pilula = document.getElementById("pilula");
+  const pilulaTexto = document.getElementById("pilulaTexto");
+  const detectorEl = document.getElementById("detector");
+  const letraEl = document.getElementById("letra");
+  const barraEl = document.getElementById("barra");
+  const statusEl = document.getElementById("status");
+  const latenciaEl = document.getElementById("latencia");
+  const fraseEl = document.getElementById("frase");
+  const fraseTextoEl = document.getElementById("fraseTexto");
+  const painelEstatico = document.getElementById("painel-estatico");
+  const painelDinamico = document.getElementById("painel-dinamico");
   const resultadoEl = document.getElementById("resultado");
   const confiancaEl = document.getElementById("confianca");
-  const statusEl = document.getElementById("status");
   const gravarBtn = document.getElementById("gravar");
-  const dicaEl = document.getElementById("dica");
   const modoEstaticoBtn = document.getElementById("modo-estatico");
   const modoDinamicoBtn = document.getElementById("modo-dinamico");
+  const modoAutoBtn = document.getElementById("modo-auto");
+  const roteadorEl = document.getElementById("roteador");
+  const chipCnn = document.getElementById("chip-cnn");
+  const chipLstm = document.getElementById("chip-lstm");
+  const medidorBarra = document.getElementById("medidorBarra");
+  const rotaTexto = document.getElementById("rotaTexto");
+  const rotaPalavraEl = document.getElementById("rotaPalavra");
+  const rotaConfEl = document.getElementById("rotaConf");
+  const rotaDiagEl = document.getElementById("rotaDiag");
+  const top3El = document.getElementById("top3");
+  const diagnosticoEl = document.getElementById("diagnostico");
+  const progressoBarra = document.getElementById("progressoBarra");
+  const falarBtn = document.getElementById("btn-falar");
   const canvas = document.createElement("canvas");
 
-  let modo = "estatico";
+  let modo = "estatico";   // "estatico" | "dinamico" | "auto"
   let gravando = false;
+  let analisando = false;  // modo automatico: esperando o servidor classificar uma palavra
+  let janela = [];         // modo automatico: ultimos 30 quadros (1 a cada 100 ms)
+  let sinal = { ativo: false, movendo: 0, parado: 0, inicio: 0 };
+  let frase = "";
+  let candidata = null;   // letra que esta sendo segurada
+  let contagem = 0;       // quantas previsoes seguidas ela teve
+  let travado = false;    // true depois de adicionar: evita repetir a letra enquanto a mao segue ali
 
   const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  function mostrar(rotulo, confianca) {
-    resultadoEl.textContent = rotulo;
-    confiancaEl.textContent = confianca == null ? "" : "confianca: " + (confianca * 100).toFixed(0) + "%";
+  // ---- Frase ----
+  function renderFrase() {
+    fraseTextoEl.textContent = frase;
+    fraseEl.classList.toggle("vazia", frase === "");
+  }
+  function adicionar(texto) { frase += texto; renderFrase(); }
+  function apagar() { frase = frase.slice(0, -1); renderFrase(); }
+  function limpar() { frase = ""; renderFrase(); }
+  function falar() {
+    if (!frase.trim()) return;
+    speechSynthesis.cancel();
+    const fala = new SpeechSynthesisUtterance(frase.toLowerCase());
+    fala.lang = "pt-BR";
+    speechSynthesis.speak(fala);
   }
 
+  // ---- Letra detectada ----
+  function mostrarLetra(rotulo, progresso) {
+    letraEl.textContent = rotulo || "-";
+    letraEl.classList.toggle("vazio", !rotulo);
+    barraEl.style.strokeDashoffset = ANEL * (1 - progresso);
+    detectorEl.classList.toggle("cheio", progresso >= 1);
+  }
+  function mostrarMao(detectada) {
+    pilula.classList.toggle("ativa", detectada);
+    pilulaTexto.textContent = detectada ? "Mão detectada" : "Mostre a mão";
+  }
+
+  function processarLetra(d) {
+    mostrarMao(d.detected);
+    if (!d.detected) {
+      candidata = null; contagem = 0; travado = false;
+      mostrarLetra(null, 0);
+      return;
+    }
+    if (!d.accepted) {  // limiar de confianca fica no servidor (app.py)
+      if (!travado) contagem = 0;  // confianca baixa: nao conta, mas nao libera a trava
+      mostrarLetra(d.label, travado ? 1 : 0);
+      return;
+    }
+    if (d.label !== candidata) { candidata = d.label; contagem = 0; travado = false; }
+    if (travado) { mostrarLetra(d.label, 1); return; }
+
+    contagem++;
+    mostrarLetra(d.label, contagem / FRAMES_PARA_ADICIONAR);
+    if (contagem >= FRAMES_PARA_ADICIONAR) {
+      adicionar(d.label);
+      travado = true;
+    }
+  }
+
+  // ---- Rede ----
   function frameBase64() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -100,64 +295,65 @@
       video.srcObject = stream;
       await video.play();
       camera.style.aspectRatio = video.videoWidth + " / " + video.videoHeight;
-      statusEl.textContent = "Camera pronta.";
+      statusEl.textContent = "Câmera pronta.";
     } catch (e) {
-      statusEl.textContent = "Nao foi possivel acessar a camera: " + e.message;
+      statusEl.textContent = "Não foi possível acessar a câmera: " + e.message;
+      pilulaTexto.textContent = "Sem câmera";
     }
   }
 
-  function trocarModo(novo) {
-    modo = novo;
-    modoEstaticoBtn.setAttribute("aria-pressed", novo === "estatico");
-    modoDinamicoBtn.setAttribute("aria-pressed", novo === "dinamico");
-    gravarBtn.hidden = guia.hidden = dicaEl.hidden = novo !== "dinamico";
-    mostrar("-", null);
-    statusEl.textContent = novo === "estatico" ? "Mostre uma letra do alfabeto." : "Pronto para gravar.";
+  // ---- Palavras ----
+  const nomeExibido = (rotulo) => (rotulo === "America" ? "América" : rotulo);
+
+  async function capturar(total, aoCapturar) {
+    // Captura no navegador, em tempo real, sem esperar o servidor entre os quadros
+    const quadros = [];
+    const t0 = performance.now();
+    for (let i = 0; i < total; i++) {
+      quadros.push(frameBase64());
+      aoCapturar(i + 1);
+      await dormir(Math.max(0, t0 + (i + 1) * INTERVALO_MS - performance.now()));
+    }
+    return quadros;
   }
 
-  async function loopEstatico() {
-    while (true) {
-      if (modo === "estatico" && video.readyState >= 2) {
-        try {
-          const d = await post("/predict", { image: frameBase64() });
-          if (d.detected) {
-            mostrar(d.label, d.confidence);
-            statusEl.textContent = "Mao detectada.";
-          } else {
-            mostrar("-", null);
-            statusEl.textContent = "Mao nao detectada.";
-          }
-        } catch (e) {
-          statusEl.textContent = e.message;
-          await dormir(1000);
-        }
-      }
-      await dormir(INTERVALO_ESTATICO_MS);
-    }
+  function resumoDiagnostico(d) {
+    const q = d.quadros;
+    let texto = "Mãos em " + q.maos + "/" + q.total + " quadros · rosto em " + q.rosto + "/" + q.total + " · ombros em " + q.ombros + "/" + q.total + ".";
+    if (d.usa_rosto && q.rosto < q.total / 2) texto += " Rosto pouco detectado: coloque o rosto dentro da caixa tracejada.";
+    else if (q.maos < q.total / 3) texto += " Mãos pouco detectadas: mantenha as mãos visíveis.";
+    return texto;
+  }
+
+  function mostrarPalavra(d, alvo) {
+    alvo.resultado.textContent = d.accepted ? nomeExibido(d.label) : "Não reconheci";
+    alvo.confianca.textContent = (d.accepted ? "confiança: " : "confiança baixa: ") + (d.confidence * 100).toFixed(0) + "%";
+    alvo.diag.textContent = resumoDiagnostico(d);
+    if (alvo.top3) alvo.top3.textContent = "Mais prováveis: " + d.top3.map((x) => nomeExibido(x.label) + " " + (x.confidence * 100).toFixed(0) + "%").join(" · ");
   }
 
   async function gravar() {
     if (gravando) return;
     gravando = true;
     gravarBtn.disabled = true;
-    mostrar("-", null);
+    resultadoEl.textContent = "-";
+    confiancaEl.textContent = top3El.textContent = diagnosticoEl.textContent = "";
+    progressoBarra.style.width = "0";
     try {
-      await post("/reset_dinamico");
       for (let i = 3; i > 0; i--) {
         statusEl.textContent = "Prepare-se... " + i;
         await dormir(1000);
       }
-      for (let n = 1; n <= TOTAL_FRAMES; n++) {
-        const inicio = performance.now();
-        statusEl.textContent = "Faca o sinal! frames " + n + "/" + TOTAL_FRAMES;
-        const d = await post("/predict_dinamico", { image: frameBase64() });
-        if (d.ready) {
-          mostrar(d.label, d.confidence);
-          statusEl.textContent = "Pronto. Clique em gravar para tentar de novo.";
-          break;
-        }
-        await dormir(Math.max(0, INTERVALO_MS - (performance.now() - inicio)));
-      }
+      const quadros = await capturar(TOTAL_FRAMES, (n) => {
+        statusEl.textContent = "Faça o sinal agora! " + n + "/" + TOTAL_FRAMES;
+        progressoBarra.style.width = (n / TOTAL_FRAMES * 100) + "%";
+      });
+      statusEl.textContent = "Analisando o sinal...";
+      const t0 = performance.now();
+      const d = await post("/predict_palavra", { images: quadros });
+      mostrarPalavra(d, { resultado: resultadoEl, confianca: confiancaEl, diag: diagnosticoEl, top3: top3El });
+      latenciaEl.textContent = "Análise completa: " + ((performance.now() - t0) / 1000).toFixed(1) + " s (classificação: " + d.latency_ms + " ms)";
+      statusEl.textContent = "Pronto. Clique em gravar para tentar de novo.";
     } catch (e) {
       statusEl.textContent = "Erro: " + e.message;
     } finally {
@@ -166,13 +362,146 @@
     }
   }
 
+  // ---- Modo automatico ----
+  function mostrarRota(d) {
+    const palavra = sinal.ativo || d.rota === "lstm";
+    chipLstm.classList.toggle("ativo", palavra);
+    chipCnn.classList.toggle("ativo", !palavra);
+    medidorBarra.style.width = Math.min(100, (d.movimento / (2 * d.limiar)) * 100) + "%";
+    rotaTexto.textContent = "Movimento do punho: " + d.movimento.toFixed(2) + " (limiar " + d.limiar + ")";
+  }
+
+  async function finalizarSinal() {
+    analisando = true;
+    statusEl.textContent = "Analisando o sinal...";
+    const quadros = janela.slice();
+    try {
+      if (quadros.length < 10) {
+        statusEl.textContent = "Sinal muito curto. Tente de novo.";
+      } else {
+        const t0 = performance.now();
+        const d = await post("/predict_palavra", { images: quadros });
+        mostrarPalavra(d, { resultado: rotaPalavraEl, confianca: rotaConfEl, diag: rotaDiagEl });
+        latenciaEl.textContent = "Análise da palavra: " + ((performance.now() - t0) / 1000).toFixed(1) + " s";
+        if (d.accepted) {
+          if (frase && !frase.endsWith(" ")) adicionar(" ");
+          adicionar(nomeExibido(d.label).toLowerCase() + " ");
+        }
+        statusEl.textContent = "Pronto. Mostre uma letra ou faça outro sinal.";
+      }
+    } catch (e) {
+      statusEl.textContent = "Erro: " + e.message;
+    } finally {
+      sinal = { ativo: false, movendo: 0, parado: 0, inicio: 0 };
+      janela = [];
+      candidata = null; contagem = 0; travado = false;
+      analisando = false;
+    }
+  }
+
+  async function passoAuto() {
+    const t0 = performance.now();
+    const d = await post("/predict_auto", { image: frameBase64() });
+    latenciaEl.textContent = "Latência: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
+    mostrarMao(d.detected);
+    mostrarRota(d);
+
+    if (!sinal.ativo) {
+      sinal.movendo = d.rota === "lstm" ? sinal.movendo + 1 : 0;
+      if (sinal.movendo >= 2) {
+        sinal.ativo = true;
+        sinal.inicio = performance.now();
+        sinal.parado = 0;
+        mostrarLetra(null, 0);
+        statusEl.textContent = "Movimento detectado: lendo a palavra...";
+      } else if (d.rota === "cnn") {
+        processarLetra(d);
+      }
+      return;
+    }
+
+    sinal.parado = d.rota === "cnn" || !d.detected ? sinal.parado + 1 : 0;
+    if (sinal.parado >= 2 || performance.now() - sinal.inicio > SINAL_MAX_MS) await finalizarSinal();
+  }
+
+  // ---- Modos ----
+  function trocarModo(novo) {
+    modo = novo;
+    const estatico = novo === "estatico", dinamico = novo === "dinamico", auto = novo === "auto";
+    modoEstaticoBtn.setAttribute("aria-pressed", estatico);
+    modoDinamicoBtn.setAttribute("aria-pressed", dinamico);
+    modoAutoBtn.setAttribute("aria-pressed", auto);
+    painelEstatico.hidden = dinamico;
+    painelDinamico.hidden = !dinamico;
+    roteadorEl.hidden = !auto;
+    document.getElementById("ajuda-estatico").hidden = auto;
+    document.getElementById("ajuda-auto").hidden = !auto;
+    guia.hidden = estatico;
+    detectorEl.hidden = dinamico;
+    candidata = null; contagem = 0; travado = false;
+    sinal = { ativo: false, movendo: 0, parado: 0, inicio: 0 };
+    janela = [];
+    mostrarLetra(null, 0);
+    mostrarMao(false);
+    resultadoEl.textContent = "-";
+    confiancaEl.textContent = top3El.textContent = diagnosticoEl.textContent = "";
+    progressoBarra.style.width = "0";
+    statusEl.textContent = estatico ? "Mostre uma letra do alfabeto." : dinamico ? "Pronto para gravar." : "Mostre uma letra ou faça um sinal.";
+  }
+
+  async function loop() {
+    while (true) {
+      if (video.readyState >= 2 && !analisando) {
+        try {
+          if (modo === "estatico") {
+            const t0 = performance.now();
+            const d = await post("/predict", { image: frameBase64() });
+            latenciaEl.textContent = "Latência: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
+            processarLetra(d);
+          } else if (modo === "auto") {
+            await passoAuto();
+          }
+        } catch (e) {
+          statusEl.textContent = e.message;
+          await dormir(1000);
+        }
+      }
+      await dormir(modo === "auto" ? 50 : INTERVALO_ESTATICO_MS);
+    }
+  }
+
+  // No modo automatico, guarda sempre os ultimos 30 quadros (3 s) para ter o inicio do sinal
+  setInterval(() => {
+    if (modo === "auto" && video.readyState >= 2 && !analisando) {
+      janela.push(frameBase64());
+      if (janela.length > TOTAL_FRAMES) janela.shift();
+    }
+  }, INTERVALO_MS);
+
+  // ---- Eventos ----
+  // blur() tira o foco do botao clicado, para a barra de espaco nao reativar o mesmo botao
+  function acao(btn, fn) { btn.addEventListener("click", () => { fn(); btn.blur(); }); }
+  acao(document.getElementById("btn-espaco"), () => adicionar(" "));
+  acao(document.getElementById("btn-apagar"), apagar);
+  acao(document.getElementById("btn-limpar"), limpar);
+  acao(falarBtn, falar);
+  if (!("speechSynthesis" in window)) falarBtn.disabled = true;
+
+  document.addEventListener("keydown", (e) => {
+    if (modo !== "estatico") return;
+    if (e.key === " ") { e.preventDefault(); adicionar(" "); }
+    if (e.key === "Backspace") { e.preventDefault(); apagar(); }
+  });
+
   modoEstaticoBtn.addEventListener("click", () => trocarModo("estatico"));
   modoDinamicoBtn.addEventListener("click", () => trocarModo("dinamico"));
+  modoAutoBtn.addEventListener("click", () => trocarModo("auto"));
   gravarBtn.addEventListener("click", gravar);
 
+  renderFrase();
   iniciarCamera().then(() => {
     trocarModo("estatico");
-    loopEstatico();
+    loop();
   });
 </script>
 </body>

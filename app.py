@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import time
+from collections import deque
 
 import cv2
 import numpy as np
@@ -17,7 +18,7 @@ from libras.landmarks import (
 )
 from extract_landmarks_imagem import extract_landmarks_from_mp_image
 from libras.landmarks import normalize_landmarks
-from libras.features import normalize_face, wrist_trajectory
+from libras.features import normalize_face, wrist_trajectory, assemble_features, needs_pose
 from extract_landmarks_video_hands_face_minds_libras import (
     extract_hands_from_frame,
     extract_face_from_frame,
@@ -26,7 +27,6 @@ from extract_landmarks_video_hands_face_minds_libras import (
     RIGHT_EYE_CORNER_SLOT,
     LEFT_EYE_CORNER_SLOT,
 )
-from train_lstm_hands_face import build_points, to_features
 
 # Todos os caminhos de arquivo sao resolvidos a partir da pasta deste
 # arquivo, nao do diretorio de onde o comando "python app.py" e rodado -
@@ -39,6 +39,28 @@ def caminho(*partes):
 
 
 app = Flask(__name__)
+
+# Abaixo do limiar a previsao nao e aceita (a demo mostra "nao reconheci").
+LIMIAR_ESTATICO = 0.70
+LIMIAR_DINAMICO = 0.50
+
+# Roteamento automatico: se o punho se move mais que isso (largura da imagem por
+# segundo), o app entende que e uma palavra (LSTM); parado, e uma letra (CNN).
+# A demo mostra o valor medido na tela, para voce calibrar antes de apresentar.
+LIMIAR_MOVIMENTO = 0.25
+
+# Intervalo entre os quadros de uma palavra (a pagina captura 1 quadro a cada 100 ms)
+INTERVALO_MS = 100
+
+# Tempos de processamento no servidor, em ms (ultimas 2000 medidas de cada tipo).
+# Consulte em http://localhost:5000/latencia depois de usar a demo.
+LATENCIAS = {chave: deque(maxlen=2000) for chave in ("estatico", "auto", "dinamico_frame", "dinamico_final")}
+
+
+def registrar_latencia(chave, inicio):
+    ms = (time.perf_counter() - inicio) * 1000
+    LATENCIAS[chave].append(ms)
+    return round(ms, 1)
 
 # ---------------- Estatico (alfabeto) ----------------
 
@@ -64,7 +86,7 @@ detector = create_detector(HAND_MODEL_PATH)
 
 # ---------------- Dinamico (palavras) ----------------
 
-MODELO_DINAMICO_PATH = caminho("modelo_palavras_minds_v3.keras")
+MODELO_DINAMICO_PATH = caminho("modelo_palavras_com_rosto_otimizado.keras")
 FACE_MODEL_PATH = caminho("face_landmarker.task")
 POSE_MODEL_PATH = caminho("pose_landmarker.task")
 FRAMES_POR_VIDEO = 30
@@ -79,9 +101,10 @@ with open(labels_dinamico_path) as f:
 print(f"Classes (dinamico): {LABELS_DINAMICO}")
 
 # Representacao usada no treino (_config.json salvo ao lado do modelo).
-# Sem o arquivo, vale o padrao do treino: rosto + trajetoria + velocidade.
+# As features sao montadas por libras.features.assemble_features, a mesma
+# funcao do treino, entao a ordem e o tamanho do vetor sempre batem.
 config_dinamico_path = os.path.splitext(MODELO_DINAMICO_PATH)[0] + "_config.json"
-CONFIG_DINAMICO = {"use_face": True, "use_traj": True, "use_velocity": True}
+CONFIG_DINAMICO = {"use_face": True, "face_norm": True, "trajectory": True, "velocity": False}
 if os.path.exists(config_dinamico_path):
     with open(config_dinamico_path) as f:
         CONFIG_DINAMICO.update(json.load(f))
@@ -91,16 +114,27 @@ print("Carregando HandLandmarker, FaceLandmarker e PoseLandmarker (dinamico)..."
 hand_detector_dinamico = create_hand_detector(HAND_MODEL_PATH, num_hands=2)
 face_detector_dinamico = create_face_detector(FACE_MODEL_PATH, num_faces=1)
 # O PoseLandmarker so e usado para os ombros (referencia da trajetoria do punho)
-pose_detector_dinamico = create_pose_detector(POSE_MODEL_PATH) if CONFIG_DINAMICO["use_traj"] else None
+pose_detector_dinamico = create_pose_detector(POSE_MODEL_PATH) if needs_pose(CONFIG_DINAMICO) else None
 
-buffer_hands, buffer_face, buffer_traj = [], [], []
-last_shoulders = np.zeros((2, 2), dtype=np.float32)
+ultimo_ts = 0                # ultimo timestamp enviado aos detectores de video (tem que crescer sempre)
+ultimo_punho = None          # (tempo, x, y) do punho na ultima chamada de /predict_auto
 
 
-def limpar_buffer():
-    global buffer_hands, buffer_face, buffer_traj, last_shoulders
-    buffer_hands, buffer_face, buffer_traj = [], [], []
-    last_shoulders = np.zeros((2, 2), dtype=np.float32)
+def decodificar(imagem_b64):
+    dados = base64.b64decode(imagem_b64.split(",")[1])
+    return cv2.imdecode(np.frombuffer(dados, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+
+def detectar_mao(frame_bgr):
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+    return extract_landmarks_from_mp_image(detector, mp_image)
+
+
+def classificar_letra(landmarks):
+    probs = model.predict(np.expand_dims(normalize_landmarks(landmarks), axis=0), verbose=0)[0]  # (1, 21, 3)
+    idx = int(np.argmax(probs))
+    return LABELS[idx], float(probs[idx])
 
 
 @app.route("/")
@@ -110,96 +144,138 @@ def index():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    payload = request.get_json()
-    image_b64 = payload["image"].split(",")[1]
-    image_bytes = base64.b64decode(image_b64)
-
-    np_arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    frame_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-    landmarks = extract_landmarks_from_mp_image(detector, mp_image)
+    inicio = time.perf_counter()
+    landmarks = detectar_mao(decodificar(request.get_json()["image"]))
 
     if landmarks is None:
         return jsonify({"detected": False})
 
-    normalized = normalize_landmarks(landmarks)
-    input_batch = np.expand_dims(normalized, axis=0)  # (1, 21, 3)
-    probs = model.predict(input_batch, verbose=0)[0]
-    pred_idx = int(np.argmax(probs))
-
+    label, confianca = classificar_letra(landmarks)
     return jsonify({
         "detected": True,
-        "label": LABELS[pred_idx],
-        "confidence": float(probs[pred_idx]),
+        "label": label,
+        "confidence": confianca,
+        "accepted": confianca >= LIMIAR_ESTATICO,
+        "latency_ms": registrar_latencia("estatico", inicio),
     })
 
 
-@app.route("/predict_dinamico", methods=["POST"])
-def predict_dinamico():
-    global last_shoulders
+@app.route("/predict_auto", methods=["POST"])
+def predict_auto():
+    """Roteador: mede o movimento do punho entre uma chamada e outra.
+    Parado -> classifica a letra com a CNN. Em movimento -> avisa que e palavra (LSTM)."""
+    global ultimo_punho
+    inicio = time.perf_counter()
+    landmarks = detectar_mao(decodificar(request.get_json()["image"]))
 
-    payload = request.get_json()
-    image_b64 = payload["image"].split(",")[1]
-    image_bytes = base64.b64decode(image_b64)
+    if landmarks is None:
+        ultimo_punho = None
+        return jsonify({"detected": False, "rota": "cnn", "movimento": 0.0, "limiar": LIMIAR_MOVIMENTO})
 
-    np_arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    frame_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    frame_h, frame_w = frame_bgr.shape[:2]
-    timestamp_ms = int(time.time() * 1000)
+    punho = np.asarray(landmarks, dtype=np.float32).reshape(-1, 3)[0][:2]
+    agora = time.time()
+    movimento = 0.0
+    if ultimo_punho is not None:
+        tempo, anterior = ultimo_punho
+        movimento = float(np.linalg.norm(punho - anterior) / max(agora - tempo, 1e-3))
+    ultimo_punho = (agora, punho)
 
-    hands_arr, wrists_xy = extract_hands_from_frame(hand_detector_dinamico, frame_rgb, timestamp_ms)
-
-    face_crop = crop_face_region(frame_bgr)
-    crop_h, crop_w = face_crop.shape[:2]
-    face_crop_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
-    face_arr = extract_face_from_frame(face_detector_dinamico, face_crop_rgb, timestamp_ms)
-    if face_arr.any():
-        face_norm = normalize_face(face_arr, crop_w, crop_h, RIGHT_EYE_CORNER_SLOT, LEFT_EYE_CORNER_SLOT)
+    resposta = {"detected": True, "movimento": movimento, "limiar": LIMIAR_MOVIMENTO}
+    if movimento > LIMIAR_MOVIMENTO:
+        resposta["rota"] = "lstm"
     else:
-        face_norm = np.zeros_like(face_arr)  # rosto nao detectado fica zerado, como no treino
+        label, confianca = classificar_letra(landmarks)
+        resposta.update({"rota": "cnn", "label": label, "confidence": confianca,
+                         "accepted": confianca >= LIMIAR_ESTATICO})
+    resposta["latency_ms"] = registrar_latencia("auto", inicio)
+    return jsonify(resposta)
 
-    traj = np.zeros((2, 2), dtype=np.float32)
-    if pose_detector_dinamico is not None:
-        shoulders = extract_shoulders_from_frame(pose_detector_dinamico, frame_rgb, timestamp_ms)
-        if shoulders.any():
-            last_shoulders = shoulders  # ombros quase nao mudam: reaproveita se a pose falhar
-        traj = wrist_trajectory(wrists_xy, last_shoulders, frame_w, frame_h)
 
-    buffer_hands.append(hands_arr)
-    buffer_face.append(face_norm)
-    buffer_traj.append(traj)
+@app.route("/predict_palavra", methods=["POST"])
+def predict_palavra():
+    """Recebe os quadros de um sinal (capturados no navegador, 1 a cada 100 ms),
+    extrai maos/rosto/trajetoria de cada um e classifica com a LSTM."""
+    global ultimo_ts
 
-    if len(buffer_hands) < FRAMES_POR_VIDEO:
-        return jsonify({"ready": False, "frames": len(buffer_hands), "total": FRAMES_POR_VIDEO})
+    frames = [decodificar(img) for img in request.get_json()["images"]]
+    # Os detectores de video exigem timestamps sempre crescentes, mesmo entre chamadas
+    base_ms = max(int(time.time() * 1000), ultimo_ts + 1)
+    ultimo_ts = base_ms + len(frames) * INTERVALO_MS
 
-    X_hands = np.array(buffer_hands, dtype=np.float32)[None]  # (1, 30, 2, 21, 3)
-    X_face = np.array(buffer_face, dtype=np.float32)[None]    # (1, 30, P, 3)
-    X_traj = np.array(buffer_traj, dtype=np.float32)[None]    # (1, 30, 2, 2)
-    limpar_buffer()
+    hands, faces, trajs = [], [], []
+    com_mao = com_rosto = com_ombros = 0
+    ombros = np.zeros((2, 2), dtype=np.float32)  # ombros quase nao mudam: reaproveita se a pose falhar
 
-    # Mesmas features do treino: pontos -> velocidade -> achatado
-    points = build_points(X_hands, X_face, X_traj, CONFIG_DINAMICO["use_face"], CONFIG_DINAMICO["use_traj"])
-    sequence = to_features(points, CONFIG_DINAMICO["use_velocity"])  # (1, 30, 816)
+    for i, frame_bgr in enumerate(frames):
+        inicio = time.perf_counter()
+        timestamp_ms = base_ms + i * INTERVALO_MS
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        frame_h, frame_w = frame_bgr.shape[:2]
 
+        hands_arr, wrists_xy = extract_hands_from_frame(hand_detector_dinamico, frame_rgb, timestamp_ms)
+
+        face_crop = crop_face_region(frame_bgr)
+        crop_h, crop_w = face_crop.shape[:2]
+        face_crop_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+        face_arr = extract_face_from_frame(face_detector_dinamico, face_crop_rgb, timestamp_ms)
+        if face_arr.any():
+            face_norm = normalize_face(face_arr, crop_w, crop_h, RIGHT_EYE_CORNER_SLOT, LEFT_EYE_CORNER_SLOT)
+        else:
+            face_norm = np.zeros_like(face_arr)  # rosto nao detectado fica zerado, como no treino
+
+        traj = np.zeros((2, 2), dtype=np.float32)
+        if pose_detector_dinamico is not None:
+            shoulders = extract_shoulders_from_frame(pose_detector_dinamico, frame_rgb, timestamp_ms)
+            if shoulders.any():
+                ombros = shoulders
+                com_ombros += 1
+            traj = wrist_trajectory(wrists_xy, ombros, frame_w, frame_h)
+
+        hands.append(hands_arr)
+        faces.append(face_norm)
+        trajs.append(traj)
+        com_mao += bool(hands_arr.any())
+        com_rosto += bool(face_arr.any())
+        registrar_latencia("dinamico_frame", inicio)
+
+    # A LSTM espera exatamente 30 quadros: reamostra se vieram menos (ou mais)
+    idx = np.linspace(0, len(frames) - 1, FRAMES_POR_VIDEO).round().astype(int)
+    X_hands = np.array(hands, dtype=np.float32)[idx][None]  # (1, 30, 2, 21, 3)
+    X_face = np.array(faces, dtype=np.float32)[idx][None]   # (1, 30, P, 3)
+    X_traj = np.array(trajs, dtype=np.float32)[idx][None]   # (1, 30, 2, 2)
+
+    inicio_clf = time.perf_counter()
+    # Mesmas features do treino: maos | rosto normalizado | trajetoria | velocidade
+    sequence = assemble_features(X_hands, X_face, X_face, X_traj, CONFIG_DINAMICO)  # (1, 30, n_features)
     probs = modelo_dinamico.predict(sequence, verbose=0)[0]
-    pred_idx = int(np.argmax(probs))
+    top = np.argsort(probs)[::-1][:3]
+    confianca = float(probs[top[0]])
 
     return jsonify({
-        "ready": True,
-        "label": LABELS_DINAMICO[pred_idx],
-        "confidence": float(probs[pred_idx]),
+        "label": LABELS_DINAMICO[top[0]],
+        "confidence": confianca,
+        "accepted": confianca >= LIMIAR_DINAMICO,
+        "top3": [{"label": LABELS_DINAMICO[i], "confidence": float(probs[i])} for i in top],
+        # Diagnostico: em quantos quadros cada parte foi detectada
+        "quadros": {"total": len(frames), "maos": com_mao, "rosto": com_rosto, "ombros": com_ombros},
+        "usa_rosto": bool(CONFIG_DINAMICO["use_face"]),
+        "latency_ms": registrar_latencia("dinamico_final", inicio_clf),
     })
 
 
-@app.route("/reset_dinamico", methods=["POST"])
-def reset_dinamico():
-    limpar_buffer()
-    return jsonify({"ok": True})
+@app.route("/latencia")
+def latencia():
+    resumo = {}
+    for chave, valores in LATENCIAS.items():
+        if valores:
+            resumo[chave] = {
+                "n": len(valores),
+                "media_ms": round(float(np.mean(valores)), 1),
+                "p50_ms": round(float(np.percentile(valores, 50)), 1),
+                "p95_ms": round(float(np.percentile(valores, 95)), 1),
+            }
+    return jsonify(resumo)
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
-    

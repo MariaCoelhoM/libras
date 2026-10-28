@@ -3,6 +3,10 @@ opencv-python-headless==4.13.0.92
 numpy>=1.26
 tensorflow>=2.16
 scikit-learn>=1.4
-kaggle
-tqdm
+matplotlib
 flask
+tqdm
+kaggle
+spacy 
+sacrebleu 
+requests
