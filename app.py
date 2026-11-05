@@ -44,9 +44,8 @@ app = Flask(__name__)
 LIMIAR_ESTATICO = 0.70
 LIMIAR_DINAMICO = 0.50
 
-# Roteamento automatico: se o punho se move mais que isso (largura da imagem por
-# segundo), o app entende que e uma palavra (LSTM); parado, e uma letra (CNN).
-# A demo mostra o valor medido na tela, para voce calibrar antes de apresentar.
+# Referencia para o roteamento automatico: movimento indica sinal dinamico (LSTM).
+# A decisao efetiva e calibrada no segmentador do navegador (SEG em index.html).
 LIMIAR_MOVIMENTO = 0.25
 
 # Intervalo entre os quadros de uma palavra (a pagina captura 1 quadro a cada 100 ms)
@@ -54,7 +53,7 @@ INTERVALO_MS = 100
 
 # Tempos de processamento no servidor, em ms (ultimas 2000 medidas de cada tipo).
 # Consulte em http://localhost:5000/latencia depois de usar a demo.
-LATENCIAS = {chave: deque(maxlen=2000) for chave in ("estatico", "auto", "dinamico_frame", "dinamico_final")}
+LATENCIAS = {chave: deque(maxlen=2000) for chave in ("estatico", "auto", "stream", "dinamico_frame", "dinamico_final", "dinamico_total")}
 
 
 def registrar_latencia(chave, inicio):
@@ -118,6 +117,7 @@ pose_detector_dinamico = create_pose_detector(POSE_MODEL_PATH) if needs_pose(CON
 
 ultimo_ts = 0                # ultimo timestamp enviado aos detectores de video (tem que crescer sempre)
 ultimo_punho = None          # (tempo, x, y) do punho na ultima chamada de /predict_auto
+ultimo_punho_stream = None   # (horario do quadro em ms, xy) do punho no ultimo quadro de /stream
 
 
 def decodificar(imagem_b64):
@@ -191,29 +191,82 @@ def predict_auto():
     return jsonify(resposta)
 
 
+@app.route("/stream", methods=["POST"])
+def stream():
+    """Fluxo continuo (modos Palavras e Automatico). Recebe um lote de quadros, cada um com o horario t (ms)
+    medido no navegador, e devolve por quadro: se ha mao e a velocidade do punho (largura da imagem por segundo).
+    A decisao letra x sinal fica no navegador (criarSegmentador em templates/index.html).
+    A letra so e classificada no ultimo quadro do lote, e so se a mao estiver parada."""
+    global ultimo_punho_stream
+    inicio = time.perf_counter()
+    dados = request.get_json()
+    frames = dados["frames"]
+    letras = dados.get("letras", False)
+    parado = dados.get("parado", LIMIAR_MOVIMENTO)
+
+    saida = []
+    for i, f in enumerate(frames):
+        landmarks = detectar_mao(decodificar(f["img"]))
+        item = {"t": f["t"], "detected": landmarks is not None, "v": 0.0}
+        if landmarks is None:
+            ultimo_punho_stream = None
+        else:
+            punho = np.asarray(landmarks, dtype=np.float32).reshape(-1, 3)[0][:2]
+            if ultimo_punho_stream is not None:
+                t_ant, p_ant = ultimo_punho_stream
+                dt = (f["t"] - t_ant) / 1000
+                if 0 < dt <= 1.0:  # horario fora de ordem ou lacuna grande: sem velocidade
+                    item["v"] = float(np.linalg.norm(punho - p_ant) / dt)
+            ultimo_punho_stream = (f["t"], punho)
+            if letras and i == len(frames) - 1 and item["v"] < parado:
+                label, confianca = classificar_letra(landmarks)
+                item.update({"label": label, "confidence": confianca, "accepted": confianca >= LIMIAR_ESTATICO})
+        saida.append(item)
+    return jsonify({"frames": saida, "latency_ms": registrar_latencia("stream", inicio)})
+
+
 @app.route("/predict_palavra", methods=["POST"])
 def predict_palavra():
     """Recebe os quadros de um sinal (capturados no navegador, 1 a cada 100 ms),
     extrai maos/rosto/trajetoria de cada um e classifica com a LSTM."""
     global ultimo_ts
 
-    frames = [decodificar(img) for img in request.get_json()["images"]]
-    # Os detectores de video exigem timestamps sempre crescentes, mesmo entre chamadas
+    inicio_total = time.perf_counter()
+    imagens = request.get_json()["images"]
+    if not imagens:
+        return jsonify({"error": "Nenhum quadro recebido."}), 400
+
+    # A LSTM usa 30 quadros. Amostramos ANTES de decodificar e executar
+    # MediaPipe, evitando processar quadros que seriam descartados depois.
+    if len(imagens) > FRAMES_POR_VIDEO:
+        indices = np.linspace(0, len(imagens) - 1, FRAMES_POR_VIDEO).round().astype(int)
+    else:
+        # Com menos de 30 quadros, processa todos com timestamps unicos;
+        # a repeticao para completar 30 acontece depois da extracao.
+        indices = np.arange(len(imagens), dtype=int)
+    frames = [decodificar(imagens[i]) for i in indices]
+
+    # Os detectores de video exigem timestamps sempre crescentes.
+    # Mantemos o espacamento temporal original dos quadros amostrados.
     base_ms = max(int(time.time() * 1000), ultimo_ts + 1)
-    ultimo_ts = base_ms + len(frames) * INTERVALO_MS
+    ultimo_ts = base_ms + len(imagens) * INTERVALO_MS
 
     hands, faces, trajs = [], [], []
+    tempos_mao, tempos_rosto, tempos_pose = [], [], []
     com_mao = com_rosto = com_ombros = 0
     ombros = np.zeros((2, 2), dtype=np.float32)  # ombros quase nao mudam: reaproveita se a pose falhar
 
     for i, frame_bgr in enumerate(frames):
         inicio = time.perf_counter()
-        timestamp_ms = base_ms + i * INTERVALO_MS
+        timestamp_ms = base_ms + int(indices[i]) * INTERVALO_MS
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         frame_h, frame_w = frame_bgr.shape[:2]
 
+        t_etapa = time.perf_counter()
         hands_arr, wrists_xy = extract_hands_from_frame(hand_detector_dinamico, frame_rgb, timestamp_ms)
+        tempos_mao.append((time.perf_counter() - t_etapa) * 1000)
 
+        t_etapa = time.perf_counter()
         face_crop = crop_face_region(frame_bgr)
         crop_h, crop_w = face_crop.shape[:2]
         face_crop_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
@@ -222,10 +275,13 @@ def predict_palavra():
             face_norm = normalize_face(face_arr, crop_w, crop_h, RIGHT_EYE_CORNER_SLOT, LEFT_EYE_CORNER_SLOT)
         else:
             face_norm = np.zeros_like(face_arr)  # rosto nao detectado fica zerado, como no treino
+        tempos_rosto.append((time.perf_counter() - t_etapa) * 1000)
 
         traj = np.zeros((2, 2), dtype=np.float32)
         if pose_detector_dinamico is not None:
+            t_etapa = time.perf_counter()
             shoulders = extract_shoulders_from_frame(pose_detector_dinamico, frame_rgb, timestamp_ms)
+            tempos_pose.append((time.perf_counter() - t_etapa) * 1000)
             if shoulders.any():
                 ombros = shoulders
                 com_ombros += 1
@@ -238,11 +294,17 @@ def predict_palavra():
         com_rosto += bool(face_arr.any())
         registrar_latencia("dinamico_frame", inicio)
 
-    # A LSTM espera exatamente 30 quadros: reamostra se vieram menos (ou mais)
-    idx = np.linspace(0, len(frames) - 1, FRAMES_POR_VIDEO).round().astype(int)
-    X_hands = np.array(hands, dtype=np.float32)[idx][None]  # (1, 30, 2, 21, 3)
-    X_face = np.array(faces, dtype=np.float32)[idx][None]   # (1, 30, P, 3)
-    X_traj = np.array(trajs, dtype=np.float32)[idx][None]   # (1, 30, 2, 2)
+    # Completa sequencias curtas por reamostragem; sequencias longas ja foram
+    # reduzidas a 30 antes da extracao, economizando inferencias do MediaPipe.
+    if len(frames) < FRAMES_POR_VIDEO:
+        idx = np.linspace(0, len(frames) - 1, FRAMES_POR_VIDEO).round().astype(int)
+        hands = np.asarray(hands, dtype=np.float32)[idx]
+        faces = np.asarray(faces, dtype=np.float32)[idx]
+        trajs = np.asarray(trajs, dtype=np.float32)[idx]
+
+    X_hands = np.asarray(hands, dtype=np.float32)[None]  # (1, 30, 2, 21, 3)
+    X_face = np.asarray(faces, dtype=np.float32)[None]   # (1, 30, P, 3)
+    X_traj = np.asarray(trajs, dtype=np.float32)[None]   # (1, 30, 2, 2)
 
     inicio_clf = time.perf_counter()
     # Mesmas features do treino: maos | rosto normalizado | trajetoria | velocidade
@@ -259,7 +321,13 @@ def predict_palavra():
         # Diagnostico: em quantos quadros cada parte foi detectada
         "quadros": {"total": len(frames), "maos": com_mao, "rosto": com_rosto, "ombros": com_ombros},
         "usa_rosto": bool(CONFIG_DINAMICO["use_face"]),
-        "latency_ms": registrar_latencia("dinamico_final", inicio_clf),
+        "latency_ms": registrar_latencia("dinamico_total", inicio_total),
+        "latency_stages_ms": {
+            "maos_media": round(float(np.mean(tempos_mao)), 1) if tempos_mao else 0,
+            "rosto_media": round(float(np.mean(tempos_rosto)), 1) if tempos_rosto else 0,
+            "pose_media": round(float(np.mean(tempos_pose)), 1) if tempos_pose else 0,
+            "classificacao": round((time.perf_counter() - inicio_clf) * 1000, 1),
+        },
     })
 
 

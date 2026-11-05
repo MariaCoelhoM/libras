@@ -89,6 +89,16 @@
   #progresso { margin: 0 0 12px; }
   #dica { color: var(--muted); font-size: 0.9rem; margin: 12px 0 0; }
 
+  .feedback-sinal { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 0.92rem; min-height: 48px; }
+  .feedback-sinal[hidden] { display: none !important; }
+  .feedback-sinal.processando { border-color: var(--accent); background: var(--accent-soft); }
+  .feedback-sinal.sucesso { border-color: var(--ok); }
+  .feedback-sinal.erro { border-color: #d97706; }
+  .feedback-icone { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; background: var(--off); }
+  .feedback-sinal.processando .feedback-icone { background: var(--accent); animation: pulsar 1s ease-in-out infinite; }
+  .feedback-sinal.sucesso .feedback-icone { background: var(--ok); }
+  .feedback-sinal.erro .feedback-icone { background: #d97706; }
+  @keyframes pulsar { 50% { opacity: .25; transform: scale(.75); } }
   #status, #latencia { color: var(--muted); font-size: 0.9rem; margin: 14px 2px 0; }
   #latencia { margin-top: 2px; font-variant-numeric: tabular-nums; }
   [hidden] { display: none !important; }
@@ -102,9 +112,9 @@
       <p>Reconhecimento de sinais pela câmera</p>
     </div>
     <div class="modos">
-      <button id="modo-estatico" aria-pressed="true">Alfabeto</button>
-      <button id="modo-dinamico" aria-pressed="false">Palavras</button>
-      <button id="modo-auto" aria-pressed="false">Automático</button>
+      <button id="modo-estatico" aria-pressed="false">Alfabeto</button>
+      <button id="modo-palavras" aria-pressed="false">Palavras</button>
+      <button id="modo-auto" aria-pressed="true">Automático</button>
     </div>
   </header>
 
@@ -119,6 +129,10 @@
           <svg viewBox="0 0 92 92"><circle class="trilho" cx="46" cy="46" r="40"/><circle class="barra" id="barra" cx="46" cy="46" r="40"/></svg>
           <b id="letra" class="vazio">-</b>
         </div>
+      </div>
+      <div id="feedbackSinal" class="feedback-sinal" role="status" aria-live="polite" hidden>
+        <span class="feedback-icone" aria-hidden="true"></span>
+        <span id="feedbackSinalTexto">Aguardando sinal...</span>
       </div>
       <p id="status">Iniciando a câmera...</p>
       <p id="latencia"></p>
@@ -145,33 +159,42 @@
         <p>Faça uma letra e mantenha por cerca de 1 segundo: ela entra na frase sozinha.</p>
         <p>Para repetir a mesma letra, tire a mão da câmera e mostre de novo. Atalhos: barra de espaço e Backspace.</p>
       </div>
+      <div class="ajuda" id="ajuda-palavras" hidden>
+        <p>Faça um sinal e pare a mão ao terminar: a palavra entra na frase sozinha. Pode fazer o próximo sinal logo em seguida, sem apertar nada.</p>
+        <p>Fique com o rosto dentro da caixa tracejada e os ombros visíveis. "Apagar" remove a última palavra.</p>
+      </div>
       <div class="ajuda" id="ajuda-auto" hidden>
-        <p>Mão parada: o app lê letras. Mão em movimento: ele entende que é uma palavra, lê o sinal inteiro e acrescenta na frase.</p>
-        <p>Fique com o rosto dentro da caixa tracejada e os ombros visíveis. Depois de uma palavra, aguarde a análise terminar.</p>
+        <p>Mão parada por cerca de 1 segundo: o app lê a letra. Mão em movimento: ele entende um sinal e, enquanto o sinal acontece, nenhuma letra é aceita.</p>
+        <p>Depois de um sinal, espere um instante antes de soletrar. Fique com o rosto dentro da caixa tracejada e os ombros visíveis.</p>
       </div>
     </section>
 
-    <section class="card" id="painel-dinamico" hidden>
-      <h2>Palavra reconhecida</h2>
-      <div id="resultado">-</div>
-      <p id="confianca"></p>
-      <p id="top3"></p>
-      <p id="diagnostico"></p>
-      <div class="medidor" id="progresso"><div id="progressoBarra"></div></div>
-      <button id="gravar">Gravar sinal</button>
-      <p id="dica">Fique centralizado, com o rosto dentro da caixa tracejada e os ombros visíveis. Clique em "Gravar sinal", espere a contagem e faça o sinal inteiro.</p>
-    </section>
   </div>
 </main>
 
 <script>
   // ---- Ajustes ----
-  const TOTAL_FRAMES = 30;            // o modelo dinamico espera 30 frames por sinal
-  const INTERVALO_MS = 100;           // 1 quadro a cada 100 ms: 30 quadros = 3 s reais
-  const SINAL_MAX_MS = 4000;          // no modo automatico, tempo maximo de um sinal
-  const INTERVALO_ESTATICO_MS = 300;  // intervalo entre previsoes do alfabeto
-  const FRAMES_PARA_ADICIONAR = 4;    // 4 previsoes iguais seguidas = ~1,2 s segurando a letra
+  const INTERVALO_MS = 100;           // palavras e automatico: 1 quadro a cada 100 ms
+  const INTERVALO_ESTATICO_MS = 150;  // alfabeto: intervalo entre previsoes
+  const FRAMES_PARA_ADICIONAR = 2;    // alfabeto: previsoes iguais seguidas para aceitar a letra
   const ANEL = 251.3;                 // circunferencia do anel de progresso (2 * pi * 40)
+  const BUFFER_MS = 6000;             // palavras e automatico: quadros guardados para recortar o sinal
+  const LARGURA_STREAM = 320;         // quadros menores aceleram a deteccao de movimento
+  const MAX_FRAMES_LOTE = 3;           // limita o tempo de cada lote e descarta quadros antigos se a CPU atrasar
+  const FRAMES_SINAL = 30;             // maximo de quadros enviados ao LSTM por sinal
+  const MIN_QUADROS_SINAL = 6;
+
+  // Segmentacao letra x sinal. Velocidade do punho em larguras de imagem por segundo (barra "Movimento").
+  // Valores iniciais: calibre com a barra (mao parada = perto de 0; sinal = bem acima de "entrada").
+  const SEG = {
+    entrada: 0.30, saida: 0.18,  // favorece detectar primeiro o movimento de um sinal dinamico
+    entradaMs: 100,              // confirma o inicio com menos espera
+    fimMs: 300,                  // aguarda menos depois que a mao para
+    margemMs: 300,               // folga antes e depois do movimento ao recortar o sinal
+    minSinalMs: 500, maxSinalMs: 4000,
+    holdLetraMs: 900,            // mesma letra, com a mao parada, por esse tempo ate ser aceita
+    bloqueioMs: 700,             // libera mais cedo a leitura de letras depois do sinal
+  };
 
   const video = document.getElementById("video");
   const camera = document.getElementById("camera");
@@ -182,16 +205,13 @@
   const letraEl = document.getElementById("letra");
   const barraEl = document.getElementById("barra");
   const statusEl = document.getElementById("status");
+  const feedbackSinalEl = document.getElementById("feedbackSinal");
+  const feedbackSinalTextoEl = document.getElementById("feedbackSinalTexto");
   const latenciaEl = document.getElementById("latencia");
   const fraseEl = document.getElementById("frase");
   const fraseTextoEl = document.getElementById("fraseTexto");
-  const painelEstatico = document.getElementById("painel-estatico");
-  const painelDinamico = document.getElementById("painel-dinamico");
-  const resultadoEl = document.getElementById("resultado");
-  const confiancaEl = document.getElementById("confianca");
-  const gravarBtn = document.getElementById("gravar");
   const modoEstaticoBtn = document.getElementById("modo-estatico");
-  const modoDinamicoBtn = document.getElementById("modo-dinamico");
+  const modoPalavrasBtn = document.getElementById("modo-palavras");
   const modoAutoBtn = document.getElementById("modo-auto");
   const roteadorEl = document.getElementById("roteador");
   const chipCnn = document.getElementById("chip-cnn");
@@ -201,21 +221,19 @@
   const rotaPalavraEl = document.getElementById("rotaPalavra");
   const rotaConfEl = document.getElementById("rotaConf");
   const rotaDiagEl = document.getElementById("rotaDiag");
-  const top3El = document.getElementById("top3");
-  const diagnosticoEl = document.getElementById("diagnostico");
-  const progressoBarra = document.getElementById("progressoBarra");
   const falarBtn = document.getElementById("btn-falar");
   const canvas = document.createElement("canvas");
 
-  let modo = "estatico";   // "estatico" | "dinamico" | "auto"
-  let gravando = false;
-  let analisando = false;  // modo automatico: esperando o servidor classificar uma palavra
-  let janela = [];         // modo automatico: ultimos 30 quadros (1 a cada 100 ms)
-  let sinal = { ativo: false, movendo: 0, parado: 0, inicio: 0 };
+  let modo = "auto";       // inicia priorizando sinais dinamicos; letras sao alternativa
   let frase = "";
-  let candidata = null;   // letra que esta sendo segurada
-  let contagem = 0;       // quantas previsoes seguidas ela teve
-  let travado = false;    // true depois de adicionar: evita repetir a letra enquanto a mao segue ali
+  let candidata = null;    // alfabeto: letra que esta sendo segurada
+  let contagem = 0;        // alfabeto: quantas previsoes seguidas ela teve
+  let travado = false;     // alfabeto: true depois de adicionar, evita repetir a letra enquanto a mao segue ali
+  let janela = [];         // palavras e automatico: quadros recentes { t, img, pequeno }
+  let tEnviado = 0;        // horario do ultimo quadro ja enviado para /stream
+  let seg = null;          // segmentador do modo atual (palavras e automatico)
+  let fila = Promise.resolve();  // sinais esperando o LSTM: um de cada vez, na ordem
+  let naFila = 0;
 
   const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -225,7 +243,11 @@
     fraseEl.classList.toggle("vazia", frase === "");
   }
   function adicionar(texto) { frase += texto; renderFrase(); }
-  function apagar() { frase = frase.slice(0, -1); renderFrase(); }
+  function apagar() {
+    // no modo palavras apaga a ultima palavra inteira; nos outros, o ultimo caractere
+    frase = modo === "palavras" ? frase.trimEnd().replace(/\S+$/, "") : frase.slice(0, -1);
+    renderFrase();
+  }
   function limpar() { frase = ""; renderFrase(); }
   function falar() {
     if (!frase.trim()) return;
@@ -247,6 +269,7 @@
     pilulaTexto.textContent = detectada ? "Mão detectada" : "Mostre a mão";
   }
 
+  // Modo alfabeto: aceita a letra depois de FRAMES_PARA_ADICIONAR previsoes iguais seguidas
   function processarLetra(d) {
     mostrarMao(d.detected);
     if (!d.detected) {
@@ -271,12 +294,13 @@
   }
 
   // ---- Rede ----
-  function frameBase64() {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+  function frameBase64(largura, qualidade) {
+    const w = largura || video.videoWidth;
+    canvas.width = w;
+    canvas.height = Math.round(video.videoHeight * w / video.videoWidth);
     // Sem espelhar: o modelo foi treinado com videos nao espelhados
-    canvas.getContext("2d").drawImage(video, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.8);
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", qualidade === undefined ? 0.8 : qualidade);
   }
 
   async function post(url, corpo) {
@@ -305,18 +329,6 @@
   // ---- Palavras ----
   const nomeExibido = (rotulo) => (rotulo === "America" ? "América" : rotulo);
 
-  async function capturar(total, aoCapturar) {
-    // Captura no navegador, em tempo real, sem esperar o servidor entre os quadros
-    const quadros = [];
-    const t0 = performance.now();
-    for (let i = 0; i < total; i++) {
-      quadros.push(frameBase64());
-      aoCapturar(i + 1);
-      await dormir(Math.max(0, t0 + (i + 1) * INTERVALO_MS - performance.now()));
-    }
-    return quadros;
-  }
-
   function resumoDiagnostico(d) {
     const q = d.quadros;
     let texto = "Mãos em " + q.maos + "/" + q.total + " quadros · rosto em " + q.rosto + "/" + q.total + " · ombros em " + q.ombros + "/" + q.total + ".";
@@ -328,155 +340,219 @@
   function mostrarPalavra(d, alvo) {
     alvo.resultado.textContent = d.accepted ? nomeExibido(d.label) : "Não reconheci";
     alvo.confianca.textContent = (d.accepted ? "confiança: " : "confiança baixa: ") + (d.confidence * 100).toFixed(0) + "%";
-    alvo.diag.textContent = resumoDiagnostico(d);
-    if (alvo.top3) alvo.top3.textContent = "Mais prováveis: " + d.top3.map((x) => nomeExibido(x.label) + " " + (x.confidence * 100).toFixed(0) + "%").join(" · ");
+
+    // O backend já retorna as três classes mais prováveis. Exibi-las ajuda
+    // a diferenciar falha de captura de uma previsão do modelo com baixa confiança.
+    const melhores = (d.top3 || []).map((item) =>
+      nomeExibido(item.label) + " (" + (item.confidence * 100).toFixed(1) + "%)"
+    ).join(" · ");
+    alvo.diag.textContent = resumoDiagnostico(d) +
+      (melhores ? " Melhores hipóteses: " + melhores + "." : "");
   }
 
-  async function gravar() {
-    if (gravando) return;
-    gravando = true;
-    gravarBtn.disabled = true;
-    resultadoEl.textContent = "-";
-    confiancaEl.textContent = top3El.textContent = diagnosticoEl.textContent = "";
-    progressoBarra.style.width = "0";
-    try {
-      for (let i = 3; i > 0; i--) {
-        statusEl.textContent = "Prepare-se... " + i;
-        await dormir(1000);
-      }
-      const quadros = await capturar(TOTAL_FRAMES, (n) => {
-        statusEl.textContent = "Faça o sinal agora! " + n + "/" + TOTAL_FRAMES;
-        progressoBarra.style.width = (n / TOTAL_FRAMES * 100) + "%";
-      });
-      statusEl.textContent = "Analisando o sinal...";
-      const t0 = performance.now();
-      const d = await post("/predict_palavra", { images: quadros });
-      mostrarPalavra(d, { resultado: resultadoEl, confianca: confiancaEl, diag: diagnosticoEl, top3: top3El });
-      latenciaEl.textContent = "Análise completa: " + ((performance.now() - t0) / 1000).toFixed(1) + " s (classificação: " + d.latency_ms + " ms)";
-      statusEl.textContent = "Pronto. Clique em gravar para tentar de novo.";
-    } catch (e) {
-      statusEl.textContent = "Erro: " + e.message;
-    } finally {
-      gravando = false;
-      gravarBtn.disabled = false;
+  function amostrar(lista, n) {
+    if (lista.length <= n) return lista;
+    return Array.from({ length: n }, (_, i) => lista[Math.round(i * (lista.length - 1) / (n - 1))]);
+  }
+
+  // ---- Segmentador: letra (mao parada) x sinal (mao em movimento) ----
+  // Recebe um quadro por vez, f = { t, detected, v, label?, accepted? }, e devolve { vs, estado, letra, progresso, evento }.
+  // evento: null | { tipo: "letra", label } | { tipo: "sinal", ini, fim }
+  // Regras: (1) sinal comeca com movimento forte e sustentado; (2) enquanto ha sinal nenhuma letra e aceita;
+  // (3) letra so e aceita se a mesma pose ficar parada por holdLetraMs, e nao logo depois de um sinal (bloqueioMs);
+  // (4) o sinal so termina depois de fimMs de mao parada, entao pausas curtas no meio dele nao o cortam.
+  // <segmentador>
+  function criarSegmentador(cfg, comLetras) {
+    const recentes = [];
+    let estado = "repouso";
+    let tAcima = null, tCand = null, ini = 0, ultimoMov = 0, bloqueioAte = 0;
+    let candidata = null, travado = false;
+
+    function letra(f, vs) {
+      if (!f.detected) { tCand = null; candidata = null; travado = false; return null; }
+      if (vs >= cfg.saida) { tCand = null; return null; }  // mexeu a mao: o relogio da letra recomeca
+      if (f.t < bloqueioAte || f.label === undefined) return null;
+      if (!f.accepted) { if (!travado) tCand = null; return null; }
+      if (f.label !== candidata) { candidata = f.label; tCand = f.t; travado = false; }
+      else if (tCand === null) tCand = f.t;
+      if (travado || f.t - tCand < cfg.holdLetraMs) return null;
+      travado = true;
+      return { tipo: "letra", label: candidata };
     }
-  }
 
-  // ---- Modo automatico ----
-  function mostrarRota(d) {
-    const palavra = sinal.ativo || d.rota === "lstm";
-    chipLstm.classList.toggle("ativo", palavra);
-    chipCnn.classList.toggle("ativo", !palavra);
-    medidorBarra.style.width = Math.min(100, (d.movimento / (2 * d.limiar)) * 100) + "%";
-    rotaTexto.textContent = "Movimento do punho: " + d.movimento.toFixed(2) + " (limiar " + d.limiar + ")";
-  }
+    function passo(f) {
+      recentes.push(f.detected ? f.v : 0);
+      if (recentes.length > 3) recentes.shift();
+      const vs = recentes.reduce((a, b) => a + b, 0) / recentes.length;  // media de 3 quadros
+      let evento = null;
 
-  async function finalizarSinal() {
-    analisando = true;
-    statusEl.textContent = "Analisando o sinal...";
-    const quadros = janela.slice();
-    try {
-      if (quadros.length < 10) {
-        statusEl.textContent = "Sinal muito curto. Tente de novo.";
+      if (estado === "repouso") {
+        if (vs > cfg.entrada) {
+          if (tAcima === null) tAcima = f.t;
+          if (f.t - tAcima >= cfg.entradaMs) {
+            estado = "sinal"; ini = tAcima; ultimoMov = f.t;
+            tCand = null; candidata = null; travado = false;
+          }
+        } else tAcima = null;
+        if (estado === "repouso" && comLetras) evento = letra(f, vs);
       } else {
-        const t0 = performance.now();
-        const d = await post("/predict_palavra", { images: quadros });
-        mostrarPalavra(d, { resultado: rotaPalavraEl, confianca: rotaConfEl, diag: rotaDiagEl });
-        latenciaEl.textContent = "Análise da palavra: " + ((performance.now() - t0) / 1000).toFixed(1) + " s";
-        if (d.accepted) {
-          if (frase && !frase.endsWith(" ")) adicionar(" ");
-          adicionar(nomeExibido(d.label).toLowerCase() + " ");
+        if (vs >= cfg.saida) ultimoMov = f.t;
+        if (f.t - ultimoMov >= cfg.fimMs || f.t - ini >= cfg.maxSinalMs) {
+          if (ultimoMov - ini >= cfg.minSinalMs) evento = { tipo: "sinal", ini: ini - cfg.margemMs, fim: ultimoMov + cfg.margemMs };
+          estado = "repouso"; tAcima = null; tCand = null; bloqueioAte = f.t + cfg.bloqueioMs;
+          candidata = null; travado = false;
         }
-        statusEl.textContent = "Pronto. Mostre uma letra ou faça outro sinal.";
       }
-    } catch (e) {
-      statusEl.textContent = "Erro: " + e.message;
-    } finally {
-      sinal = { ativo: false, movendo: 0, parado: 0, inicio: 0 };
-      janela = [];
-      candidata = null; contagem = 0; travado = false;
-      analisando = false;
+      const progresso = travado ? 1 : tCand === null ? 0 : Math.min(1, (f.t - tCand) / cfg.holdLetraMs);
+      return { vs, estado, evento, letra: tCand !== null ? candidata : null, progresso };
     }
+    return { passo };
+  }
+  // </segmentador>
+
+  // ---- Palavras e automatico (fluxo continuo) ----
+  function mostrarFeedbackSinal(tipo, mensagem) {
+    feedbackSinalEl.hidden = false;
+    feedbackSinalEl.classList.remove("processando", "sucesso", "erro");
+    if (tipo) feedbackSinalEl.classList.add(tipo);
+    feedbackSinalTextoEl.textContent = mensagem;
   }
 
-  async function passoAuto() {
+  function atualizarStatus(sinal) {
+    if (sinal) statusEl.textContent = "Lendo o sinal... pare a mão ao terminar.";
+    else if (naFila > 0) statusEl.textContent = "Analisando " + naFila + (naFila === 1 ? " sinal..." : " sinais...");
+    else statusEl.textContent = modo === "auto" ? "Mostre uma letra (mão parada) ou faça um sinal." : "Faça um sinal. Pare a mão ao terminar.";
+  }
+
+  function atualizarFluxo(r, f) {
+    const sinal = r.estado === "sinal";
+    mostrarMao(f.detected);
+    chipLstm.classList.toggle("ativo", sinal);
+    chipCnn.classList.toggle("ativo", !sinal);
+    medidorBarra.style.width = Math.min(100, (r.vs / (2 * SEG.entrada)) * 100) + "%";
+    rotaTexto.textContent = "Movimento do punho: " + r.vs.toFixed(2) + " (sinal acima de " + SEG.entrada + ", mão parada abaixo de " + SEG.saida + ")";
+    if (modo === "auto") mostrarLetra(sinal ? null : r.letra, sinal ? 0 : r.progresso);
+    atualizarStatus(sinal);
+  }
+
+  async function classificarSinal(quadros) {
     const t0 = performance.now();
-    const d = await post("/predict_auto", { image: frameBase64() });
-    latenciaEl.textContent = "Latência: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
-    mostrarMao(d.detected);
-    mostrarRota(d);
-
-    if (!sinal.ativo) {
-      sinal.movendo = d.rota === "lstm" ? sinal.movendo + 1 : 0;
-      if (sinal.movendo >= 2) {
-        sinal.ativo = true;
-        sinal.inicio = performance.now();
-        sinal.parado = 0;
-        mostrarLetra(null, 0);
-        statusEl.textContent = "Movimento detectado: lendo a palavra...";
-      } else if (d.rota === "cnn") {
-        processarLetra(d);
-      }
-      return;
+    mostrarFeedbackSinal("processando", "Sinal recebido! Estou reconhecendo... Não precisa repetir o movimento.");
+    const d = await post("/predict_palavra", { images: quadros });
+    mostrarPalavra(d, { resultado: rotaPalavraEl, confianca: rotaConfEl, diag: rotaDiagEl });
+    if (d.accepted) {
+      mostrarFeedbackSinal("sucesso", "Sinal reconhecido: " + nomeExibido(d.label) + ". Pode fazer o próximo sinal.");
+    } else {
+      mostrarFeedbackSinal("erro", "Terminei a análise, mas não reconheci o sinal. Ajuste a posição das mãos e tente novamente.");
     }
-
-    sinal.parado = d.rota === "cnn" || !d.detected ? sinal.parado + 1 : 0;
-    if (sinal.parado >= 2 || performance.now() - sinal.inicio > SINAL_MAX_MS) await finalizarSinal();
+    const totalSeg = ((performance.now() - t0) / 1000).toFixed(1);
+    const etapas = d.latency_stages_ms || {};
+    rotaDiagEl.textContent += " Análise total: " + totalSeg + " s (servidor: " +
+      (d.latency_ms || 0).toFixed(0) + " ms; mãos: " + (etapas.maos_media || 0).toFixed(0) +
+      " ms/quadro; rosto: " + (etapas.rosto_media || 0).toFixed(0) +
+      " ms/quadro; pose: " + (etapas.pose_media || 0).toFixed(0) +
+      " ms/quadro; modelo: " + (etapas.classificacao || 0).toFixed(0) + " ms).";
+    if (modo !== "estatico" && d.accepted) {
+      if (frase && !frase.endsWith(" ")) adicionar(" ");
+      adicionar(nomeExibido(d.label).toLowerCase() + " ");
+    }
   }
+
+  function tratarEvento(e) {
+    if (e.tipo === "letra") { adicionar(e.label); return; }
+    // recorta o sinal (quadros inteiros) e manda ao LSTM; o fluxo continua enquanto isso
+    const quadros = amostrar(janela.filter((f) => f.t >= e.ini && f.t <= e.fim).map((f) => f.img), FRAMES_SINAL);
+    if (quadros.length < MIN_QUADROS_SINAL) return;
+    naFila++;
+    mostrarFeedbackSinal("processando", naFila > 1
+      ? "Sinal recebido! Há " + naFila + " sinais aguardando análise. Não precisa repetir."
+      : "Sinal recebido! Estou reconhecendo... Não precisa repetir o movimento.");
+    fila = fila
+      .then(() => classificarSinal(quadros))
+      .catch((err) => { statusEl.textContent = "Erro: " + err.message; mostrarFeedbackSinal("erro", "Ocorreu um erro durante o reconhecimento. Tente novamente."); })
+      .finally(() => { naFila--; });
+  }
+
+  async function passoFluxo() {
+    const atual = seg;
+    const novos = janela.filter((f) => f.t > tEnviado);
+    if (!atual || !novos.length) return;
+
+    // Se o servidor ficou ocupado, descarta quadros antigos e trabalha com
+    // os mais recentes. Isso evita que o reconhecimento fique varios segundos atrasado.
+    const lote = novos.length > MAX_FRAMES_LOTE ? novos.slice(-MAX_FRAMES_LOTE) : novos;
+    tEnviado = novos[novos.length - 1].t;
+    const t0 = performance.now();
+    const d = await post("/stream", { frames: lote.map((f) => ({ t: f.t, img: f.pequeno })), letras: modo === "auto", parado: SEG.saida });
+    if (seg !== atual) return;  // trocou de modo enquanto esperava
+    latenciaEl.textContent = "Lote de " + lote.length + " quadros: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
+    let r = null;
+    for (const f of d.frames) {
+      r = atual.passo(f);
+      if (r.evento) tratarEvento(r.evento);
+    }
+    atualizarFluxo(r, d.frames[d.frames.length - 1]);
+  }
+
+  // Guarda os ultimos BUFFER_MS de quadros, cada um com seu horario, para recortar depois so o trecho do sinal
+  setInterval(() => {
+    if (modo !== "estatico" && video.readyState >= 2) {
+      const t = performance.now();
+      // O LSTM recebe imagem menor; o fluxo de movimento usa uma imagem ainda mais leve.
+      janela.push({ t, img: frameBase64(480, 0.72), pequeno: frameBase64(LARGURA_STREAM, 0.62) });
+      while (janela.length && t - janela[0].t > BUFFER_MS) janela.shift();
+    }
+  }, INTERVALO_MS);
 
   // ---- Modos ----
   function trocarModo(novo) {
     modo = novo;
-    const estatico = novo === "estatico", dinamico = novo === "dinamico", auto = novo === "auto";
+    const estatico = novo === "estatico", palavras = novo === "palavras", auto = novo === "auto";
     modoEstaticoBtn.setAttribute("aria-pressed", estatico);
-    modoDinamicoBtn.setAttribute("aria-pressed", dinamico);
+    modoPalavrasBtn.setAttribute("aria-pressed", palavras);
     modoAutoBtn.setAttribute("aria-pressed", auto);
-    painelEstatico.hidden = dinamico;
-    painelDinamico.hidden = !dinamico;
-    roteadorEl.hidden = !auto;
-    document.getElementById("ajuda-estatico").hidden = auto;
+    roteadorEl.hidden = estatico;
+    chipCnn.hidden = palavras;
+    document.getElementById("ajuda-estatico").hidden = !estatico;
+    document.getElementById("ajuda-palavras").hidden = !palavras;
     document.getElementById("ajuda-auto").hidden = !auto;
     guia.hidden = estatico;
-    detectorEl.hidden = dinamico;
+    detectorEl.hidden = palavras;
     candidata = null; contagem = 0; travado = false;
-    sinal = { ativo: false, movendo: 0, parado: 0, inicio: 0 };
-    janela = [];
+    seg = estatico ? null : criarSegmentador(SEG, auto);
+    janela = []; tEnviado = 0;
     mostrarLetra(null, 0);
     mostrarMao(false);
-    resultadoEl.textContent = "-";
-    confiancaEl.textContent = top3El.textContent = diagnosticoEl.textContent = "";
-    progressoBarra.style.width = "0";
-    statusEl.textContent = estatico ? "Mostre uma letra do alfabeto." : dinamico ? "Pronto para gravar." : "Mostre uma letra ou faça um sinal.";
+    medidorBarra.style.width = "0";
+    rotaTexto.textContent = "Movimento do punho: -";
+    rotaPalavraEl.textContent = rotaConfEl.textContent = rotaDiagEl.textContent = "";
+    feedbackSinalEl.hidden = true;
+    if (estatico) statusEl.textContent = "Mostre uma letra do alfabeto.";
+    else atualizarStatus(false);
   }
 
   async function loop() {
     while (true) {
-      if (video.readyState >= 2 && !analisando) {
+      if (video.readyState >= 2) {
         try {
           if (modo === "estatico") {
             const t0 = performance.now();
             const d = await post("/predict", { image: frameBase64() });
-            latenciaEl.textContent = "Latência: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
-            processarLetra(d);
-          } else if (modo === "auto") {
-            await passoAuto();
+            if (modo === "estatico") {
+              latenciaEl.textContent = "Latência: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
+              processarLetra(d);
+            }
+          } else {
+            await passoFluxo();
           }
         } catch (e) {
           statusEl.textContent = e.message;
           await dormir(1000);
         }
       }
-      await dormir(modo === "auto" ? 50 : INTERVALO_ESTATICO_MS);
+      await dormir(modo === "estatico" ? INTERVALO_ESTATICO_MS : INTERVALO_MS);
     }
   }
-
-  // No modo automatico, guarda sempre os ultimos 30 quadros (3 s) para ter o inicio do sinal
-  setInterval(() => {
-    if (modo === "auto" && video.readyState >= 2 && !analisando) {
-      janela.push(frameBase64());
-      if (janela.length > TOTAL_FRAMES) janela.shift();
-    }
-  }, INTERVALO_MS);
 
   // ---- Eventos ----
   // blur() tira o foco do botao clicado, para a barra de espaco nao reativar o mesmo botao
@@ -488,19 +564,17 @@
   if (!("speechSynthesis" in window)) falarBtn.disabled = true;
 
   document.addEventListener("keydown", (e) => {
-    if (modo !== "estatico") return;
     if (e.key === " ") { e.preventDefault(); adicionar(" "); }
     if (e.key === "Backspace") { e.preventDefault(); apagar(); }
   });
 
   modoEstaticoBtn.addEventListener("click", () => trocarModo("estatico"));
-  modoDinamicoBtn.addEventListener("click", () => trocarModo("dinamico"));
+  modoPalavrasBtn.addEventListener("click", () => trocarModo("palavras"));
   modoAutoBtn.addEventListener("click", () => trocarModo("auto"));
-  gravarBtn.addEventListener("click", gravar);
 
   renderFrase();
   iniciarCamera().then(() => {
-    trocarModo("estatico");
+    trocarModo("auto");
     loop();
   });
 </script>
