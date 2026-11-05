@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Libras · Tradutor ao vivo</title>
+<title>Libras - Tradutor Bidirecional</title>
 <style>
   :root {
     --bg: #f4f6f8; --surface: #ffffff; --fg: #111827; --muted: #6b7280; --line: #e3e7ec;
@@ -18,6 +18,32 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; line-height: 1.5; }
   main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 40px; }
+
+  /* VLibras (avatar e ícone das mãos) só aparece na aba Português ➔ Libras */
+  body.aba-camera [vw],
+  body.aba-camera [vw-access-button],
+  body.aba-camera [vw-plugin-wrapper],
+  body.aba-camera [vp] {
+    display: none !important;
+  }
+
+  /* Texto do botão via CSS: o VLibras não consegue "ler" e sinalizar o rótulo */
+  #btn-gerar-sinais { font-size: 1rem; }
+  #btn-gerar-sinais::before { content: "Traduzir para Sinais"; }
+
+  /* Sistema de Abas */
+  .navegacao-abas { display: flex; gap: 10px; margin-bottom: 24px; border-bottom: 2px solid var(--line); padding-bottom: 0px; }
+  .aba-btn { background: transparent; border: none; font-size: 1.1rem; font-weight: 600; color: var(--muted); cursor: pointer; padding: 12px 20px; border-radius: 8px 8px 0 0; transition: color 0.2s, background 0.2s; margin-bottom: -2px; }
+  .aba-btn:hover { color: var(--fg); background: var(--surface); }
+  .aba-btn.ativa { color: var(--accent); border-bottom: 3px solid var(--accent); }
+
+  /* Área de Texto para Libras (Tradutor Inverso) */
+  .tradutor-inverso { display: flex; flex-direction: column; gap: 16px; width: 100%; }
+  .caixa-texto-container { max-width: 60%; } 
+  .campo-texto { width: 100%; min-height: 200px; padding: 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font-size: 1.2rem; font-family: inherit; resize: vertical; margin-top: 10px; }
+  .campo-texto:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+  
+  @media (max-width: 820px) { .caixa-texto-container { max-width: 100%; } }
 
   header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 24px; }
   h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
@@ -35,14 +61,13 @@
 
   /* camera */
   .camera { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 14px; overflow: hidden; }
-  video { width: 100%; height: 100%; display: block; transform: scaleX(-1); } /* espelho so na tela */
+  video { width: 100%; height: 100%; display: block; transform: scaleX(-1); }
   .guia { position: absolute; left: 30%; top: 10%; width: 40%; height: 35%; border: 2px dashed rgba(255, 255, 255, 0.75); border-radius: 10px; pointer-events: none; }
   .guia span { position: absolute; top: -24px; left: 0; font-size: 0.8rem; color: #fff; text-shadow: 0 0 4px #000; }
   .pilula { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 0.82rem; backdrop-filter: blur(6px); }
   .pilula i { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
   .pilula.ativa i { background: var(--ok); }
 
-  /* letra detectada com anel de progresso */
   .detector { position: absolute; left: 12px; bottom: 12px; width: 92px; height: 92px; border-radius: 50%; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); display: grid; place-items: center; }
   .detector svg { position: absolute; inset: 0; transform: rotate(-90deg); }
   .detector circle { fill: none; stroke-width: 5; }
@@ -52,12 +77,10 @@
   .detector b { font-size: 2.4rem; color: #fff; font-weight: 700; }
   .detector b.vazio { color: rgba(255, 255, 255, 0.4); }
 
-  /* frase */
   .frase { min-height: 130px; padding: 16px 18px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); font-size: 2rem; font-weight: 600; letter-spacing: 0.02em; white-space: pre-wrap; word-break: break-word; }
   .frase.vazia #fraseTexto::before { content: "Sua frase aparece aqui"; color: var(--muted); font-weight: 400; font-size: 1.1rem; letter-spacing: 0; }
   .cursor { display: inline-block; width: 3px; height: 1.9rem; margin-left: 2px; vertical-align: text-bottom; background: var(--accent); animation: piscar 1s steps(1) infinite; }
   @keyframes piscar { 50% { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } .detector .barra { transition: none; } }
 
   .acoes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
   .acoes button, #gravar { font: inherit; font-weight: 600; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; transition: background .15s; }
@@ -71,29 +94,17 @@
   .acoes .principal, #gravar { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   .acoes .principal:hover { background: var(--accent); filter: brightness(1.08); }
   button:disabled { opacity: 0.45; cursor: default; }
-  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-  @media (max-width: 420px) { .acoes { grid-template-columns: repeat(2, 1fr); } }
 
   .ajuda { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); font-size: 0.9rem; }
   .ajuda p { margin: 0; }
   .ajuda p + p { margin-top: 4px; color: var(--muted); }
 
-  /* roteador (modo automatico) */
   .roteador { margin-top: 14px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); }
   .rotas { display: flex; gap: 8px; }
-  .chip { flex: 1; text-align: center; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; font-weight: 600; transition: background .15s, color .15s; }
+  .chip { flex: 1; text-align: center; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; font-weight: 600; }
   .chip.ativo { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
   .medidor { height: 8px; margin-top: 12px; border-radius: 999px; background: var(--line); overflow: hidden; }
   .medidor div { height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
-  .roteador p, #diagnostico, #top3 { margin: 8px 0 0; color: var(--muted); font-size: 0.85rem; }
-  #rotaPalavra { margin-top: 8px; font-size: 1.3rem; font-weight: 700; }
-
-  /* palavras */
-  #resultado { font-size: 2.4rem; font-weight: 700; min-height: 3.2rem; }
-  #confianca { color: var(--muted); margin: 0 0 14px; min-height: 1.5rem; }
-  #gravar { width: 100%; padding: 14px; }
-  #progresso { margin: 0 0 12px; }
-  #dica { color: var(--muted); font-size: 0.9rem; margin: 12px 0 0; }
 
   .feedback-sinal { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 0.92rem; min-height: 48px; }
   .feedback-sinal[hidden] { display: none !important; }
@@ -101,114 +112,235 @@
   .feedback-sinal.sucesso { border-color: var(--ok); }
   .feedback-sinal.erro { border-color: #d97706; }
   .feedback-icone { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; background: var(--off); }
-  .feedback-sinal.processando .feedback-icone { background: var(--accent); animation: pulsar 1s ease-in-out infinite; }
-  .feedback-sinal.sucesso .feedback-icone { background: var(--ok); }
-  .feedback-sinal.erro .feedback-icone { background: #d97706; }
-  @keyframes pulsar { 50% { opacity: .25; transform: scale(.75); } }
   #status, #latencia { color: var(--muted); font-size: 0.9rem; margin: 14px 2px 0; }
-  #latencia { margin-top: 2px; font-variant-numeric: tabular-nums; }
   [hidden] { display: none !important; }
 </style>
 </head>
-<body>
+<body class="aba-camera">
 <main>
-  <header>
-    <div>
-      <h1>Libras ao vivo</h1>
-      <p>Reconhecimento de sinais pela câmera</p>
-    </div>
-    <div class="modos">
-      <button id="modo-estatico" aria-pressed="false">Alfabeto</button>
-      <button id="modo-palavras" aria-pressed="false">Palavras</button>
-      <button id="modo-auto" aria-pressed="true">Automático</button>
-    </div>
-  </header>
+  <!-- Abas de Navegação -->
+  <nav class="navegacao-abas">
+    <button id="aba-camera" class="aba-btn ativa">Libras ➔ Português</button>
+    <button id="aba-teclado" class="aba-btn">Português ➔ Libras</button>
+  </nav>
 
-  <div class="layout">
-    <section class="card">
-      <h2>Câmera</h2>
-      <div class="camera" id="camera">
-        <video id="video" autoplay playsinline muted></video>
-        <div class="guia" id="guia" hidden><span>rosto aqui</span></div>
-        <div class="pilula" id="pilula"><i></i><span id="pilulaTexto">Iniciando...</span></div>
-        <div class="detector" id="detector" hidden>
-          <svg viewBox="0 0 92 92"><circle class="trilho" cx="46" cy="46" r="40"/><circle class="barra" id="barra" cx="46" cy="46" r="40"/></svg>
-          <b id="letra" class="vazio">-</b>
+  <!-- Aba 1: Câmera (Libras -> Português) -->
+  <div id="conteiner-camera">
+    <header>
+      <div>
+        <h1>Libras ao vivo</h1>
+        <p>Reconhecimento de sinais pela câmera</p>
+      </div>
+      <div class="modos">
+        <button id="modo-estatico" aria-pressed="false">Alfabeto</button>
+        <button id="modo-palavras" aria-pressed="false">Palavras</button>
+        <button id="modo-auto" aria-pressed="true">Automático</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <section class="card">
+        <h2>Câmera</h2>
+        <div class="camera" id="camera">
+          <video id="video" autoplay playsinline muted></video>
+          <div class="guia" id="guia" hidden><span>rosto aqui</span></div>
+          <div class="pilula" id="pilula"><i></i><span id="pilulaTexto">Iniciando...</span></div>
+          <div class="detector" id="detector" hidden>
+            <svg viewBox="0 0 92 92"><circle class="trilho" cx="46" cy="46" r="40"/><circle class="barra" id="barra" cx="46" cy="46" r="40"/></svg>
+            <b id="letra" class="vazio">-</b>
+          </div>
         </div>
-      </div>
-      <div id="feedbackSinal" class="feedback-sinal" role="status" aria-live="polite" hidden>
-        <span class="feedback-icone" aria-hidden="true"></span>
-        <span id="feedbackSinalTexto">Aguardando sinal...</span>
-      </div>
-      <p id="status">Iniciando a câmera...</p>
-      <p id="latencia"></p>
-    </section>
+        <div id="feedbackSinal" class="feedback-sinal" role="status" aria-live="polite" hidden>
+          <span class="feedback-icone" aria-hidden="true"></span>
+          <span id="feedbackSinalTexto">Aguardando sinal...</span>
+        </div>
+        <p id="status">Iniciando a câmera...</p>
+        <p id="latencia"></p>
+      </section>
 
-    <section class="card" id="painel-estatico">
-      <h2>Sua frase</h2>
-      <div class="frase vazia" id="frase"><span id="fraseTexto"></span><span class="cursor"></span></div>
-      <div class="acoes">
-        <button id="btn-espaco" class="principal">Espaço</button>
-        <button id="btn-apagar">Apagar</button>
-        <button id="btn-limpar">Limpar</button>
-        <button id="btn-falar">Falar</button>
-        <button id="btn-montar" class="largo">Montar frase em português (Enter)</button>
-      </div>
-      <div class="natural velha" id="natural" hidden>
-        <span class="rotulo">Frase em português</span>
-        <p id="naturalTexto"></p>
-        <small id="naturalNota"></small>
-      </div>
-      <div class="roteador" id="roteador" hidden>
-        <div class="rotas"><span class="chip ativo" id="chip-cnn">CNN · letras</span><span class="chip" id="chip-lstm">LSTM · palavras</span></div>
-        <div class="medidor"><div id="medidorBarra"></div></div>
-        <p id="rotaTexto">Movimento: -</p>
-        <div id="rotaPalavra"></div>
-        <p id="rotaConf"></p>
-        <p id="rotaDiag"></p>
-      </div>
-      <div class="ajuda" id="ajuda-estatico">
-        <p>Faça uma letra e mantenha por cerca de 1 segundo: ela entra na frase sozinha.</p>
-        <p>Para repetir a mesma letra, tire a mão da câmera e mostre de novo. Atalhos: barra de espaço e Backspace.</p>
-      </div>
-      <div class="ajuda" id="ajuda-palavras" hidden>
-        <p>Faça um sinal e pare a mão ao terminar: a palavra entra na frase sozinha. Pode fazer o próximo sinal logo em seguida, sem apertar nada.</p>
-        <p>Fique com o rosto dentro da caixa tracejada e os ombros visíveis. "Apagar" remove a última palavra.</p>
-        <p>Depois de alguns segundos sem sinais, a frase em português aparece embaixo (ou aperte Enter).</p>
-      </div>
-      <div class="ajuda" id="ajuda-auto" hidden>
-        <p>Mão parada por cerca de 1 segundo: o app lê a letra. Mão em movimento: ele entende um sinal e, enquanto o sinal acontece, nenhuma letra é aceita.</p>
-        <p>Depois de um sinal, espere um instante antes de soletrar. Fique com o rosto dentro da caixa tracejada e os ombros visíveis.</p>
-        <p>Depois de alguns segundos sem sinais, a frase em português aparece embaixo (ou aperte Enter). Palavras soletradas ficam em maiúsculas.</p>
-      </div>
-    </section>
-
+      <section class="card" id="painel-estatico">
+        <h2>Sua frase</h2>
+        <div class="frase vazia" id="frase"><span id="fraseTexto"></span><span class="cursor"></span></div>
+        <div class="acoes">
+          <button id="btn-espaco" class="principal">Espaço</button>
+          <button id="btn-apagar">Apagar</button>
+          <button id="btn-limpar">Limpar</button>
+          <button id="btn-falar">Falar</button>
+          <button id="btn-montar" class="largo">Montar frase em português (Enter)</button>
+        </div>
+        <div class="natural velha" id="natural" hidden>
+          <span class="rotulo">Frase em português</span>
+          <p id="naturalTexto"></p>
+          <small id="naturalNota"></small>
+        </div>
+        <div class="roteador" id="roteador" hidden>
+          <div class="rotas"><span class="chip ativo" id="chip-cnn">CNN · letras</span><span class="chip" id="chip-lstm">LSTM · palavras</span></div>
+          <div class="medidor"><div id="medidorBarra"></div></div>
+          <p id="rotaTexto">Movimento: -</p>
+          <div id="rotaPalavra"></div>
+          <p id="rotaConf"></p>
+          <p id="rotaDiag"></p>
+        </div>
+        <div class="ajuda" id="ajuda-estatico">
+          <p>Faça uma letra e mantenha por cerca de 1 segundo: ela entra na frase sozinha.</p>
+          <p>Para repetir a mesma letra, tire a mão da câmera e mostre de novo. Atalhos: barra de espaço e Backspace.</p>
+        </div>
+        <div class="ajuda" id="ajuda-palavras" hidden>
+          <p>Faça um sinal e pare a mão ao terminar: a palavra entra na frase sozinha. Pode fazer o próximo sinal logo em seguida, sem apertar nada.</p>
+          <p>Fique com o rosto dentro da caixa tracejada e os ombros visíveis. "Apagar" remove a última palavra.</p>
+          <p>Depois de alguns segundos sem sinais, a frase em português aparece embaixo (ou aperte Enter).</p>
+        </div>
+        <div class="ajuda" id="ajuda-auto" hidden>
+          <p>Mão parada por cerca de 1 segundo: o app lê a letra. Mão em movimento: ele entende um sinal e, enquanto o sinal acontece, nenhuma letra é aceita.</p>
+          <p>Depois de um sinal, espere um instante antes de soletrar. Fique com o rosto dentro da caixa tracejada e os ombros visíveis.</p>
+          <p>Depois de alguns segundos sem sinais, a frase em português aparece embaixo (ou aperte Enter). Palavras soletradas ficam em maiúsculas.</p>
+        </div>
+      </section>
+    </div>
   </div>
+
+  <!-- Aba 2: Teclado (Português -> Libras) -->
+  <div id="conteiner-teclado" class="tradutor-inverso" hidden>
+    <header>
+      <div>
+        <h1>Texto para Libras</h1>
+        <p>Digite uma frase para ser traduzida pelo avatar</p>
+      </div>
+    </header>
+
+    <div class="caixa-texto-container">
+      <section class="card">
+        <h2>Digite a frase em Português</h2>
+        <textarea id="texto-entrada" class="campo-texto" placeholder="Ex: Oi você teria batata para comprar?"></textarea>
+        
+        <div class="acoes" style="margin-top: 16px;">
+          <button id="btn-gerar-sinais" class="principal largo" aria-label="Traduzir para Sinais" vw-ignore></button>
+        </div>
+        <p id="msg-avatar" style="margin:10px 2px 0;color:var(--muted);font-size:0.9rem;" vw-ignore></p>
+        
+        <div class="ajuda" style="margin-top: 20px;">
+          <p><strong>Como usar:</strong> Digite o texto acima e clique no botão. O avatar ao lado vai sinalizar a sua frase imediatamente.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+
 </main>
 
+<!-- Widget Oficial do VLibras -->
+<div vw class="enabled">
+  <div vw-access-button class="active"></div>
+  <div vw-plugin-wrapper>
+    <div class="vw-plugin-top-wrapper"></div>
+  </div>
+</div>
+<script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+
 <script>
-  // ---- Ajustes ----
-  const INTERVALO_MS = 100;           // palavras e automatico: 1 quadro a cada 100 ms
-  const INTERVALO_ESTATICO_MS = 150;  // alfabeto: intervalo entre previsoes
-  const FRAMES_PARA_ADICIONAR = 2;    // alfabeto: previsoes iguais seguidas para aceitar a letra
-  const ANEL = 251.3;                 // circunferencia do anel de progresso (2 * pi * 40)
-  const PAUSA_MONTAR_MS = 2500;       // palavras e automatico: sem sinais por esse tempo = monta a frase em portugues
-  const BUFFER_MS = 6000;             // palavras e automatico: quadros guardados para recortar o sinal
-  const LARGURA_STREAM = 320;         // quadros menores aceleram a deteccao de movimento
-  const MAX_FRAMES_LOTE = 3;           // limita o tempo de cada lote e descarta quadros antigos se a CPU atrasar
-  const FRAMES_SINAL = 30;             // maximo de quadros enviados ao LSTM por sinal
+  const VERSAO_PAGINA = "v3";
+  console.log("[Libras] página carregada, versão " + VERSAO_PAGINA);
+
+  let vlibrasWidget = null;
+
+  // Tudo que o VLibras cria na página (inclusive elementos que ele adiciona depois)
+  const SELETOR_VLIBRAS = "[vw], [vp], [vw-access-button], [vw-plugin-wrapper], [vp-box], [vp-access-button]";
+
+  function aplicarVisibilidadeAvatar() {
+    const mostrar = document.body.classList.contains("aba-teclado");
+    document.querySelectorAll(SELETOR_VLIBRAS).forEach((el) => {
+      if (mostrar) {
+        el.style.removeProperty("display");
+        el.style.removeProperty("visibility");
+        el.style.removeProperty("pointer-events");
+      } else {
+        el.style.setProperty("display", "none", "important");
+      }
+    });
+  }
+
+  // O widget cria elementos novos depois do carregamento: reaplica a regra neles
+  new MutationObserver(() => {
+    if (!document.body.classList.contains("aba-teclado")) aplicarVisibilidadeAvatar();
+  }).observe(document.body, { childList: true, subtree: true });
+
+  window.addEventListener('load', () => {
+    try {
+      vlibrasWidget = new window.VLibras.Widget('https://vlibras.gov.br/app');
+      console.log("[Libras] Widget criado:", vlibrasWidget);
+    } catch (err) {
+      console.error("[Libras] Falha ao criar o widget do VLibras:", err);
+    }
+    aplicarVisibilidadeAvatar();
+  });
+
+  function abrirAvatar() {
+    const btn = document.querySelector('[vw-access-button]');
+    const wrapper = document.querySelector('[vw-plugin-wrapper]');
+    if (btn && wrapper && !wrapper.classList.contains('active')) btn.click();
+  }
+
+  function acharPlayer() {
+    const candidatos = [
+      window.plugin && window.plugin.player,
+      vlibrasWidget && vlibrasWidget.player,
+      window.plugin,
+      vlibrasWidget,
+    ];
+    return candidatos.find((c) => c && typeof c.translate === "function") || null;
+  }
+
+  // Plano B: seleciona o texto numa área da página, como se o usuário tivesse selecionado
+  function traduzirPorSelecao(texto) {
+    let alvo = document.getElementById("vlibras-selecao");
+    if (!alvo) {
+      alvo = document.createElement("p");
+      alvo.id = "vlibras-selecao";
+      alvo.style.cssText = "position:fixed;left:0;bottom:0;margin:0;padding:2px;font-size:1px;opacity:0.01;z-index:-1;";
+      document.body.appendChild(alvo);
+    }
+    alvo.textContent = texto;
+    const range = document.createRange();
+    range.selectNodeContents(alvo);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    ["mousedown", "mouseup", "click"].forEach((tipo) =>
+      alvo.dispatchEvent(new MouseEvent(tipo, { bubbles: true, cancelable: true, view: window }))
+    );
+    return true;
+  }
+
+  function traduzirParaLibras(texto) {
+    const player = acharPlayer();
+    if (player) {
+      try {
+        player.translate(texto);
+        console.log("[Libras] translate() chamado com:", texto);
+        return "api";
+      } catch (err) {
+        console.warn("[Libras] translate() falhou:", err);
+      }
+    }
+    traduzirPorSelecao(texto);
+    return "selecao";
+  }
+
+  const INTERVALO_MS = 100;           
+  const INTERVALO_ESTATICO_MS = 150;  
+  const FRAMES_PARA_ADICIONAR = 2;    
+  const ANEL = 251.3;                 
+  const PAUSA_MONTAR_MS = 2500;       
+  const BUFFER_MS = 6000;             
+  const LARGURA_STREAM = 320;         
+  const MAX_FRAMES_LOTE = 3;          
+  const FRAMES_SINAL = 30;            
   const MIN_QUADROS_SINAL = 6;
 
-  // Segmentacao letra x sinal. Velocidade do punho em larguras de imagem por segundo (barra "Movimento").
-  // Valores iniciais: calibre com a barra (mao parada = perto de 0; sinal = bem acima de "entrada").
   const SEG = {
-    entrada: 0.30, saida: 0.18,  // favorece detectar primeiro o movimento de um sinal dinamico
-    entradaMs: 100,              // confirma o inicio com menos espera
-    fimMs: 300,                  // aguarda menos depois que a mao para
-    margemMs: 300,               // folga antes e depois do movimento ao recortar o sinal
-    minSinalMs: 500, maxSinalMs: 4000,
-    holdLetraMs: 900,            // mesma letra, com a mao parada, por esse tempo ate ser aceita
-    bloqueioMs: 700,             // libera mais cedo a leitura de letras depois do sinal
+    entrada: 0.30, saida: 0.18,
+    entradaMs: 100, fimMs: 300,
+    margemMs: 300, minSinalMs: 500, maxSinalMs: 4000,
+    holdLetraMs: 900, bloqueioMs: 700,
   };
 
   const video = document.getElementById("video");
@@ -242,20 +374,75 @@
   const naturalNotaEl = document.getElementById("naturalNota");
   const canvas = document.createElement("canvas");
 
-  let modo = "auto";       // inicia priorizando sinais dinamicos; letras sao alternativa
+  let modo = "auto";
   let frase = "";
-  let candidata = null;    // alfabeto: letra que esta sendo segurada
-  let contagem = 0;        // alfabeto: quantas previsoes seguidas ela teve
-  let travado = false;     // alfabeto: true depois de adicionar, evita repetir a letra enquanto a mao segue ali
-  let janela = [];         // palavras e automatico: quadros recentes { t, img, pequeno }
-  let tEnviado = 0;        // horario do ultimo quadro ja enviado para /stream
-  let seg = null;          // segmentador do modo atual (palavras e automatico)
-  let fila = Promise.resolve();  // sinais esperando o LSTM: um de cada vez, na ordem
+  let candidata = null;
+  let contagem = 0;
+  let travado = false;
+  let janela = [];
+  let tEnviado = 0;
+  let seg = null;
+  let fila = Promise.resolve();
   let naFila = 0;
-  let naturalChave = "";   // palavras da frase em portugues que esta na tela
-  let tMontar = null;      // temporizador que monta a frase depois de uma pausa
+  let naturalChave = "";
+  let tMontar = null;
 
   const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // ---- Navegação de Abas ----
+  const btnAbaCamera = document.getElementById("aba-camera");
+  const btnAbaTeclado = document.getElementById("aba-teclado");
+  const conteinerCamera = document.getElementById("conteiner-camera");
+  const conteinerTeclado = document.getElementById("conteiner-teclado");
+
+  function alternarAba(aba) {
+    const mostrarCamera = (aba === 'camera');
+    
+    btnAbaCamera.classList.toggle("ativa", mostrarCamera);
+    btnAbaTeclado.classList.toggle("ativa", !mostrarCamera);
+    
+    conteinerCamera.hidden = !mostrarCamera;
+    conteinerTeclado.hidden = mostrarCamera;
+
+    document.body.classList.remove('aba-camera', 'aba-teclado');
+    document.body.classList.add(mostrarCamera ? 'aba-camera' : 'aba-teclado');
+
+    if (!mostrarCamera && video.srcObject) {
+      video.pause();
+    } else if (mostrarCamera && video.srcObject) {
+      video.play().catch(e => console.log("Erro ao retomar video:", e));
+    }
+
+    aplicarVisibilidadeAvatar();
+    if (!mostrarCamera) setTimeout(abrirAvatar, 500);
+  }
+
+  btnAbaCamera.addEventListener("click", () => alternarAba('camera'));
+  btnAbaTeclado.addEventListener("click", () => alternarAba('teclado'));
+
+  // ---- Lógica do Teclado -> VLibras ----
+  const textoEntrada = document.getElementById("texto-entrada");
+
+  // Captura o clique ANTES do VLibras, para ele não traduzir o rótulo do botão
+  window.addEventListener("click", (e) => {
+    if (!e.target.closest("#btn-gerar-sinais")) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+
+    const texto = textoEntrada.value.trim();
+    if (!texto) return;
+
+    const msg = document.getElementById("msg-avatar");
+    msg.textContent = "Enviando para o avatar...";
+    abrirAvatar();
+    // pequena espera caso o avatar tenha acabado de abrir
+    setTimeout(() => {
+      const via = traduzirParaLibras(texto);
+      msg.textContent = via === "api"
+        ? "Texto enviado ao avatar."
+        : "A API do player não foi encontrada; tentei pela seleção de texto. Se o avatar não sinalizar, abra o console (F12) e me envie as mensagens [Libras].";
+    }, 800);
+  }, true);
 
   // ---- Frase ----
   function renderFrase() {
@@ -264,16 +451,25 @@
     agendarMontagem();
   }
 
-  // ---- Frase em portugues (spaCy + LLM no servidor) ----
-  const glosasDaFrase = () => frase.trim().split(/\s+/).filter(Boolean);  // palavras reconhecidas; MAIUSCULAS = soletradas
+  const glosasDaFrase = () => frase.trim().split(/\s+/).filter(Boolean);
 
   function agendarMontagem() {
     clearTimeout(tMontar);
     const chave = glosasDaFrase().join(" ");
-    if (!chave) { naturalEl.hidden = true; naturalChave = ""; return; }
-    if (chave === naturalChave) { naturalEl.classList.remove("velha"); return; }  // so mudou o espaco
-    naturalEl.classList.add("velha");  // a frase em portugues ficou desatualizada
-    if (modo !== "estatico" && glosasDaFrase().length >= 2) tMontar = setTimeout(montarFraseNatural, PAUSA_MONTAR_MS);
+    if (!chave) {
+      naturalEl.hidden = true;
+      naturalChave = "";
+      return;
+    }
+    if (chave === naturalChave) {
+      naturalEl.classList.remove("velha");
+      return;
+    }
+    naturalEl.classList.add("velha");
+    const palavraFinalizada = frase.endsWith(" ");
+    if (modo !== "estatico" && palavraFinalizada && glosasDaFrase().length >= 2) {
+      tMontar = setTimeout(montarFraseNatural, PAUSA_MONTAR_MS);
+    }
   }
 
   async function montarFraseNatural() {
@@ -287,7 +483,7 @@
     naturalNotaEl.textContent = "";
     try {
       const d = await post("/frase", { glosas });
-      if (chave !== glosasDaFrase().join(" ")) return;  // a frase mudou enquanto o LLM respondia
+      if (chave !== glosasDaFrase().join(" ")) return;
       naturalTextoEl.textContent = d.frase;
       naturalNotaEl.textContent = !d.llm ? "LLM indisponível: mostrando as palavras na ordem dos sinais."
         : d.confere ? "" : "Confira: alguma palavra pode ter sido trocada.";
@@ -299,7 +495,6 @@
   }
   function adicionar(texto) { frase += texto; renderFrase(); }
   function apagar() {
-    // no modo palavras apaga a ultima palavra inteira; nos outros, o ultimo caractere
     frase = modo === "palavras" ? frase.trimEnd().replace(/\S+$/, "") : frase.slice(0, -1);
     renderFrase();
   }
@@ -307,7 +502,6 @@
   function falar() {
     if (!frase.trim()) return;
     speechSynthesis.cancel();
-    // fala a frase em portugues, se ela estiver atualizada; senao, as palavras reconhecidas
     const pronta = !naturalEl.hidden && !naturalEl.classList.contains("velha");
     const fala = new SpeechSynthesisUtterance(pronta ? naturalTextoEl.textContent : frase.toLowerCase());
     fala.lang = "pt-BR";
@@ -326,7 +520,6 @@
     pilulaTexto.textContent = detectada ? "Mão detectada" : "Mostre a mão";
   }
 
-  // Modo alfabeto: aceita a letra depois de FRAMES_PARA_ADICIONAR previsoes iguais seguidas
   function processarLetra(d) {
     mostrarMao(d.detected);
     if (!d.detected) {
@@ -334,8 +527,8 @@
       mostrarLetra(null, 0);
       return;
     }
-    if (!d.accepted) {  // limiar de confianca fica no servidor (app.py)
-      if (!travado) contagem = 0;  // confianca baixa: nao conta, mas nao libera a trava
+    if (!d.accepted) {
+      if (!travado) contagem = 0;
       mostrarLetra(d.label, travado ? 1 : 0);
       return;
     }
@@ -355,7 +548,6 @@
     const w = largura || video.videoWidth;
     canvas.width = w;
     canvas.height = Math.round(video.videoHeight * w / video.videoWidth);
-    // Sem espelhar: o modelo foi treinado com videos nao espelhados
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL("image/jpeg", qualidade === undefined ? 0.8 : qualidade);
   }
@@ -383,7 +575,6 @@
     }
   }
 
-  // ---- Palavras ----
   const NOMES = { America: "América", Maca: "Maçã" };
   const nomeExibido = (rotulo) => NOMES[rotulo] || rotulo;
 
@@ -398,9 +589,6 @@
   function mostrarPalavra(d, alvo) {
     alvo.resultado.textContent = d.accepted ? nomeExibido(d.label) : "Não reconheci";
     alvo.confianca.textContent = (d.accepted ? "confiança: " : "confiança baixa: ") + (d.confidence * 100).toFixed(0) + "%";
-
-    // O backend já retorna as três classes mais prováveis. Exibi-las ajuda
-    // a diferenciar falha de captura de uma previsão do modelo com baixa confiança.
     const melhores = (d.top3 || []).map((item) =>
       nomeExibido(item.label) + " (" + (item.confidence * 100).toFixed(1) + "%)"
     ).join(" · ");
@@ -413,13 +601,6 @@
     return Array.from({ length: n }, (_, i) => lista[Math.round(i * (lista.length - 1) / (n - 1))]);
   }
 
-  // ---- Segmentador: letra (mao parada) x sinal (mao em movimento) ----
-  // Recebe um quadro por vez, f = { t, detected, v, label?, accepted? }, e devolve { vs, estado, letra, progresso, evento }.
-  // evento: null | { tipo: "letra", label } | { tipo: "sinal", ini, fim }
-  // Regras: (1) sinal comeca com movimento forte e sustentado; (2) enquanto ha sinal nenhuma letra e aceita;
-  // (3) letra so e aceita se a mesma pose ficar parada por holdLetraMs, e nao logo depois de um sinal (bloqueioMs);
-  // (4) o sinal so termina depois de fimMs de mao parada, entao pausas curtas no meio dele nao o cortam.
-  // <segmentador>
   function criarSegmentador(cfg, comLetras) {
     const recentes = [];
     let estado = "repouso";
@@ -428,7 +609,7 @@
 
     function letra(f, vs) {
       if (!f.detected) { tCand = null; candidata = null; travado = false; return null; }
-      if (vs >= cfg.saida) { tCand = null; return null; }  // mexeu a mao: o relogio da letra recomeca
+      if (vs >= cfg.saida) { tCand = null; return null; }
       if (f.t < bloqueioAte || f.label === undefined) return null;
       if (!f.accepted) { if (!travado) tCand = null; return null; }
       if (f.label !== candidata) { candidata = f.label; tCand = f.t; travado = false; }
@@ -441,7 +622,7 @@
     function passo(f) {
       recentes.push(f.detected ? f.v : 0);
       if (recentes.length > 3) recentes.shift();
-      const vs = recentes.reduce((a, b) => a + b, 0) / recentes.length;  // media de 3 quadros
+      const vs = recentes.reduce((a, b) => a + b, 0) / recentes.length;
       let evento = null;
 
       if (estado === "repouso") {
@@ -466,9 +647,7 @@
     }
     return { passo };
   }
-  // </segmentador>
 
-  // ---- Palavras e automatico (fluxo continuo) ----
   function mostrarFeedbackSinal(tipo, mensagem) {
     feedbackSinalEl.hidden = false;
     feedbackSinalEl.classList.remove("processando", "sucesso", "erro");
@@ -518,7 +697,6 @@
 
   function tratarEvento(e) {
     if (e.tipo === "letra") { adicionar(e.label); return; }
-    // recorta o sinal (quadros inteiros) e manda ao LSTM; o fluxo continua enquanto isso
     const quadros = amostrar(janela.filter((f) => f.t >= e.ini && f.t <= e.fim).map((f) => f.img), FRAMES_SINAL);
     if (quadros.length < MIN_QUADROS_SINAL) return;
     naFila++;
@@ -535,14 +713,11 @@
     const atual = seg;
     const novos = janela.filter((f) => f.t > tEnviado);
     if (!atual || !novos.length) return;
-
-    // Se o servidor ficou ocupado, descarta quadros antigos e trabalha com
-    // os mais recentes. Isso evita que o reconhecimento fique varios segundos atrasado.
     const lote = novos.length > MAX_FRAMES_LOTE ? novos.slice(-MAX_FRAMES_LOTE) : novos;
     tEnviado = novos[novos.length - 1].t;
     const t0 = performance.now();
     const d = await post("/stream", { frames: lote.map((f) => ({ t: f.t, img: f.pequeno })), letras: modo === "auto", parado: SEG.saida });
-    if (seg !== atual) return;  // trocou de modo enquanto esperava
+    if (seg !== atual) return;
     latenciaEl.textContent = "Lote de " + lote.length + " quadros: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
     let r = null;
     for (const f of d.frames) {
@@ -552,17 +727,14 @@
     atualizarFluxo(r, d.frames[d.frames.length - 1]);
   }
 
-  // Guarda os ultimos BUFFER_MS de quadros, cada um com seu horario, para recortar depois so o trecho do sinal
   setInterval(() => {
-    if (modo !== "estatico" && video.readyState >= 2) {
+    if (modo !== "estatico" && video.readyState >= 2 && !video.paused) {
       const t = performance.now();
-      // O LSTM recebe imagem menor; o fluxo de movimento usa uma imagem ainda mais leve.
       janela.push({ t, img: frameBase64(480, 0.72), pequeno: frameBase64(LARGURA_STREAM, 0.62) });
       while (janela.length && t - janela[0].t > BUFFER_MS) janela.shift();
     }
   }, INTERVALO_MS);
 
-  // ---- Modos ----
   function trocarModo(novo) {
     modo = novo;
     const estatico = novo === "estatico", palavras = novo === "palavras", auto = novo === "auto";
@@ -591,7 +763,7 @@
 
   async function loop() {
     while (true) {
-      if (video.readyState >= 2) {
+      if (video.readyState >= 2 && !video.paused) {
         try {
           if (modo === "estatico") {
             const t0 = performance.now();
@@ -612,8 +784,6 @@
     }
   }
 
-  // ---- Eventos ----
-  // blur() tira o foco do botao clicado, para a barra de espaco nao reativar o mesmo botao
   function acao(btn, fn) { btn.addEventListener("click", () => { fn(); btn.blur(); }); }
   acao(document.getElementById("btn-espaco"), () => adicionar(" "));
   acao(document.getElementById("btn-apagar"), apagar);
@@ -623,6 +793,7 @@
   if (!("speechSynthesis" in window)) falarBtn.disabled = true;
 
   document.addEventListener("keydown", (e) => {
+    if (document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "INPUT") return;
     if (e.key === " ") { e.preventDefault(); adicionar(" "); }
     if (e.key === "Backspace") { e.preventDefault(); apagar(); }
     if (e.key === "Enter") { e.preventDefault(); montarFraseNatural(); }
