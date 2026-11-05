@@ -10,6 +10,12 @@ import mediapipe as mp
 import tensorflow as tf
 from flask import Flask, jsonify, render_template, request
 
+try:
+    from frases import montar_frase
+except Exception as erro:  # spaCy/modelo ausente: o resto do app continua funcionando
+    print("Frases desativadas:", erro)
+    montar_frase = None
+
 from libras.landmarks import (
     create_detector,
     create_hand_detector,
@@ -28,9 +34,7 @@ from extract_landmarks_video_hands_face_minds_libras import (
     LEFT_EYE_CORNER_SLOT,
 )
 
-# Todos os caminhos de arquivo sao resolvidos a partir da pasta deste
-# arquivo, nao do diretorio de onde o comando "python app.py" e rodado -
-# assim o app funciona igual rodando de qualquer lugar.
+# Todos os caminhos de arquivo sao resolvidos a partir da pasta deste arquivo
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -40,20 +44,24 @@ def caminho(*partes):
 
 app = Flask(__name__)
 
-# Abaixo do limiar a previsao nao e aceita (a demo mostra "nao reconheci").
+# A chave do Gemini é lida de GEMINI_API_KEY no ambiente; não a coloque neste arquivo.
+print("Arquivo do servidor:", os.path.abspath(__file__))
+try:
+    from frases import GEMINI_MODELO
+    print("Modelo Gemini configurado:", GEMINI_MODELO)
+    print("Chave Gemini configurada:", bool(os.environ.get("GEMINI_API_KEY")))
+except Exception:
+    pass
+
+# Limiares de aceitação de classificação
 LIMIAR_ESTATICO = 0.70
 LIMIAR_DINAMICO = 0.50
-
-# Referencia para o roteamento automatico: movimento indica sinal dinamico (LSTM).
-# A decisao efetiva e calibrada no segmentador do navegador (SEG em index.html).
 LIMIAR_MOVIMENTO = 0.25
 
-# Intervalo entre os quadros de uma palavra (a pagina captura 1 quadro a cada 100 ms)
 INTERVALO_MS = 100
 
-# Tempos de processamento no servidor, em ms (ultimas 2000 medidas de cada tipo).
-# Consulte em http://localhost:5000/latencia depois de usar a demo.
-LATENCIAS = {chave: deque(maxlen=2000) for chave in ("estatico", "auto", "stream", "dinamico_frame", "dinamico_final", "dinamico_total")}
+# Registrador de latências das requisições
+LATENCIAS = {chave: deque(maxlen=2000) for chave in ("estatico", "auto", "stream", "frase", "dinamico_frame", "dinamico_final", "dinamico_total")}
 
 
 def registrar_latencia(chave, inicio):
@@ -61,7 +69,7 @@ def registrar_latencia(chave, inicio):
     LATENCIAS[chave].append(ms)
     return round(ms, 1)
 
-# ---------------- Estatico (alfabeto) ----------------
+# ---------------- Estático (Alfabeto) ----------------
 
 MODEL_PATH = caminho("modelo_alfabeto.keras")
 HAND_MODEL_PATH = caminho("hand_landmarker.task")
@@ -79,11 +87,10 @@ else:
     LABELS = sorted(set(data["y"].tolist()))
 
 print(f"Classes (estatico): {LABELS}")
-
 print("Carregando o HandLandmarker (estatico)...")
 detector = create_detector(HAND_MODEL_PATH)
 
-# ---------------- Dinamico (palavras) ----------------
+# ---------------- Dinâmico (Palavras em Libras) ----------------
 
 MODELO_DINAMICO_PATH = caminho("modelo_palavras_com_rosto_otimizado.keras")
 FACE_MODEL_PATH = caminho("face_landmarker.task")
@@ -99,9 +106,6 @@ with open(labels_dinamico_path) as f:
 
 print(f"Classes (dinamico): {LABELS_DINAMICO}")
 
-# Representacao usada no treino (_config.json salvo ao lado do modelo).
-# As features sao montadas por libras.features.assemble_features, a mesma
-# funcao do treino, entao a ordem e o tamanho do vetor sempre batem.
 config_dinamico_path = os.path.splitext(MODELO_DINAMICO_PATH)[0] + "_config.json"
 CONFIG_DINAMICO = {"use_face": True, "face_norm": True, "trajectory": True, "velocity": False}
 if os.path.exists(config_dinamico_path):
@@ -112,12 +116,11 @@ print(f"Representacao (dinamico): {CONFIG_DINAMICO}")
 print("Carregando HandLandmarker, FaceLandmarker e PoseLandmarker (dinamico)...")
 hand_detector_dinamico = create_hand_detector(HAND_MODEL_PATH, num_hands=2)
 face_detector_dinamico = create_face_detector(FACE_MODEL_PATH, num_faces=1)
-# O PoseLandmarker so e usado para os ombros (referencia da trajetoria do punho)
 pose_detector_dinamico = create_pose_detector(POSE_MODEL_PATH) if needs_pose(CONFIG_DINAMICO) else None
 
-ultimo_ts = 0                # ultimo timestamp enviado aos detectores de video (tem que crescer sempre)
-ultimo_punho = None          # (tempo, x, y) do punho na ultima chamada de /predict_auto
-ultimo_punho_stream = None   # (horario do quadro em ms, xy) do punho no ultimo quadro de /stream
+ultimo_ts = 0
+ultimo_punho = None
+ultimo_punho_stream = None
 
 
 def decodificar(imagem_b64):
@@ -132,7 +135,7 @@ def detectar_mao(frame_bgr):
 
 
 def classificar_letra(landmarks):
-    probs = model.predict(np.expand_dims(normalize_landmarks(landmarks), axis=0), verbose=0)[0]  # (1, 21, 3)
+    probs = model.predict(np.expand_dims(normalize_landmarks(landmarks), axis=0), verbose=0)[0]
     idx = int(np.argmax(probs))
     return LABELS[idx], float(probs[idx])
 
@@ -162,8 +165,6 @@ def predict():
 
 @app.route("/predict_auto", methods=["POST"])
 def predict_auto():
-    """Roteador: mede o movimento do punho entre uma chamada e outra.
-    Parado -> classifica a letra com a CNN. Em movimento -> avisa que e palavra (LSTM)."""
     global ultimo_punho
     inicio = time.perf_counter()
     landmarks = detectar_mao(decodificar(request.get_json()["image"]))
@@ -193,10 +194,6 @@ def predict_auto():
 
 @app.route("/stream", methods=["POST"])
 def stream():
-    """Fluxo continuo (modos Palavras e Automatico). Recebe um lote de quadros, cada um com o horario t (ms)
-    medido no navegador, e devolve por quadro: se ha mao e a velocidade do punho (largura da imagem por segundo).
-    A decisao letra x sinal fica no navegador (criarSegmentador em templates/index.html).
-    A letra so e classificada no ultimo quadro do lote, e so se a mao estiver parada."""
     global ultimo_punho_stream
     inicio = time.perf_counter()
     dados = request.get_json()
@@ -215,7 +212,7 @@ def stream():
             if ultimo_punho_stream is not None:
                 t_ant, p_ant = ultimo_punho_stream
                 dt = (f["t"] - t_ant) / 1000
-                if 0 < dt <= 1.0:  # horario fora de ordem ou lacuna grande: sem velocidade
+                if 0 < dt <= 1.0:
                     item["v"] = float(np.linalg.norm(punho - p_ant) / dt)
             ultimo_punho_stream = (f["t"], punho)
             if letras and i == len(frames) - 1 and item["v"] < parado:
@@ -227,8 +224,6 @@ def stream():
 
 @app.route("/predict_palavra", methods=["POST"])
 def predict_palavra():
-    """Recebe os quadros de um sinal (capturados no navegador, 1 a cada 100 ms),
-    extrai maos/rosto/trajetoria de cada um e classifica com a LSTM."""
     global ultimo_ts
 
     inicio_total = time.perf_counter()
@@ -236,25 +231,19 @@ def predict_palavra():
     if not imagens:
         return jsonify({"error": "Nenhum quadro recebido."}), 400
 
-    # A LSTM usa 30 quadros. Amostramos ANTES de decodificar e executar
-    # MediaPipe, evitando processar quadros que seriam descartados depois.
     if len(imagens) > FRAMES_POR_VIDEO:
         indices = np.linspace(0, len(imagens) - 1, FRAMES_POR_VIDEO).round().astype(int)
     else:
-        # Com menos de 30 quadros, processa todos com timestamps unicos;
-        # a repeticao para completar 30 acontece depois da extracao.
         indices = np.arange(len(imagens), dtype=int)
     frames = [decodificar(imagens[i]) for i in indices]
 
-    # Os detectores de video exigem timestamps sempre crescentes.
-    # Mantemos o espacamento temporal original dos quadros amostrados.
     base_ms = max(int(time.time() * 1000), ultimo_ts + 1)
     ultimo_ts = base_ms + len(imagens) * INTERVALO_MS
 
     hands, faces, trajs = [], [], []
     tempos_mao, tempos_rosto, tempos_pose = [], [], []
     com_mao = com_rosto = com_ombros = 0
-    ombros = np.zeros((2, 2), dtype=np.float32)  # ombros quase nao mudam: reaproveita se a pose falhar
+    ombros = np.zeros((2, 2), dtype=np.float32)
 
     for i, frame_bgr in enumerate(frames):
         inicio = time.perf_counter()
@@ -274,7 +263,7 @@ def predict_palavra():
         if face_arr.any():
             face_norm = normalize_face(face_arr, crop_w, crop_h, RIGHT_EYE_CORNER_SLOT, LEFT_EYE_CORNER_SLOT)
         else:
-            face_norm = np.zeros_like(face_arr)  # rosto nao detectado fica zerado, como no treino
+            face_norm = np.zeros_like(face_arr)
         tempos_rosto.append((time.perf_counter() - t_etapa) * 1000)
 
         traj = np.zeros((2, 2), dtype=np.float32)
@@ -294,21 +283,18 @@ def predict_palavra():
         com_rosto += bool(face_arr.any())
         registrar_latencia("dinamico_frame", inicio)
 
-    # Completa sequencias curtas por reamostragem; sequencias longas ja foram
-    # reduzidas a 30 antes da extracao, economizando inferencias do MediaPipe.
     if len(frames) < FRAMES_POR_VIDEO:
         idx = np.linspace(0, len(frames) - 1, FRAMES_POR_VIDEO).round().astype(int)
         hands = np.asarray(hands, dtype=np.float32)[idx]
         faces = np.asarray(faces, dtype=np.float32)[idx]
         trajs = np.asarray(trajs, dtype=np.float32)[idx]
 
-    X_hands = np.asarray(hands, dtype=np.float32)[None]  # (1, 30, 2, 21, 3)
-    X_face = np.asarray(faces, dtype=np.float32)[None]   # (1, 30, P, 3)
-    X_traj = np.asarray(trajs, dtype=np.float32)[None]   # (1, 30, 2, 2)
+    X_hands = np.asarray(hands, dtype=np.float32)[None]
+    X_face = np.asarray(faces, dtype=np.float32)[None]
+    X_traj = np.asarray(trajs, dtype=np.float32)[None]
 
     inicio_clf = time.perf_counter()
-    # Mesmas features do treino: maos | rosto normalizado | trajetoria | velocidade
-    sequence = assemble_features(X_hands, X_face, X_face, X_traj, CONFIG_DINAMICO)  # (1, 30, n_features)
+    sequence = assemble_features(X_hands, X_face, X_face, X_traj, CONFIG_DINAMICO)
     probs = modelo_dinamico.predict(sequence, verbose=0)[0]
     top = np.argsort(probs)[::-1][:3]
     confianca = float(probs[top[0]])
@@ -318,7 +304,6 @@ def predict_palavra():
         "confidence": confianca,
         "accepted": confianca >= LIMIAR_DINAMICO,
         "top3": [{"label": LABELS_DINAMICO[i], "confidence": float(probs[i])} for i in top],
-        # Diagnostico: em quantos quadros cada parte foi detectada
         "quadros": {"total": len(frames), "maos": com_mao, "rosto": com_rosto, "ombros": com_ombros},
         "usa_rosto": bool(CONFIG_DINAMICO["use_face"]),
         "latency_ms": registrar_latencia("dinamico_total", inicio_total),
@@ -329,6 +314,16 @@ def predict_palavra():
             "classificacao": round((time.perf_counter() - inicio_clf) * 1000, 1),
         },
     })
+
+
+@app.route("/frase", methods=["POST"])
+def frase():
+    if montar_frase is None:
+        return jsonify({"erro": "frases desativadas (veja o terminal)"}), 503
+    inicio = time.perf_counter()
+    texto, confere, usou_llm = montar_frase(request.get_json()["glosas"])
+    return jsonify({"frase": texto, "confere": confere, "llm": usou_llm,
+                    "latency_ms": registrar_latencia("frase", inicio)})
 
 
 @app.route("/latencia")

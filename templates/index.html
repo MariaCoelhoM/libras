@@ -62,6 +62,12 @@
   .acoes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
   .acoes button, #gravar { font: inherit; font-weight: 600; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; transition: background .15s; }
   .acoes button:hover { background: var(--bg); }
+  .acoes .largo { grid-column: 1 / -1; }
+  .natural { margin-top: 12px; padding: 14px 18px; border-radius: 14px; background: var(--surface); border: 1px solid var(--accent); }
+  .natural.velha { opacity: 0.55; border-color: var(--line); }
+  .natural .rotulo { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .natural p { margin: 6px 0 0; font-size: 1.35rem; font-weight: 600; }
+  .natural small { color: var(--muted); }
   .acoes .principal, #gravar { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   .acoes .principal:hover { background: var(--accent); filter: brightness(1.08); }
   button:disabled { opacity: 0.45; cursor: default; }
@@ -146,6 +152,12 @@
         <button id="btn-apagar">Apagar</button>
         <button id="btn-limpar">Limpar</button>
         <button id="btn-falar">Falar</button>
+        <button id="btn-montar" class="largo">Montar frase em português (Enter)</button>
+      </div>
+      <div class="natural velha" id="natural" hidden>
+        <span class="rotulo">Frase em português</span>
+        <p id="naturalTexto"></p>
+        <small id="naturalNota"></small>
       </div>
       <div class="roteador" id="roteador" hidden>
         <div class="rotas"><span class="chip ativo" id="chip-cnn">CNN · letras</span><span class="chip" id="chip-lstm">LSTM · palavras</span></div>
@@ -162,10 +174,12 @@
       <div class="ajuda" id="ajuda-palavras" hidden>
         <p>Faça um sinal e pare a mão ao terminar: a palavra entra na frase sozinha. Pode fazer o próximo sinal logo em seguida, sem apertar nada.</p>
         <p>Fique com o rosto dentro da caixa tracejada e os ombros visíveis. "Apagar" remove a última palavra.</p>
+        <p>Depois de alguns segundos sem sinais, a frase em português aparece embaixo (ou aperte Enter).</p>
       </div>
       <div class="ajuda" id="ajuda-auto" hidden>
         <p>Mão parada por cerca de 1 segundo: o app lê a letra. Mão em movimento: ele entende um sinal e, enquanto o sinal acontece, nenhuma letra é aceita.</p>
         <p>Depois de um sinal, espere um instante antes de soletrar. Fique com o rosto dentro da caixa tracejada e os ombros visíveis.</p>
+        <p>Depois de alguns segundos sem sinais, a frase em português aparece embaixo (ou aperte Enter). Palavras soletradas ficam em maiúsculas.</p>
       </div>
     </section>
 
@@ -178,6 +192,7 @@
   const INTERVALO_ESTATICO_MS = 150;  // alfabeto: intervalo entre previsoes
   const FRAMES_PARA_ADICIONAR = 2;    // alfabeto: previsoes iguais seguidas para aceitar a letra
   const ANEL = 251.3;                 // circunferencia do anel de progresso (2 * pi * 40)
+  const PAUSA_MONTAR_MS = 2500;       // palavras e automatico: sem sinais por esse tempo = monta a frase em portugues
   const BUFFER_MS = 6000;             // palavras e automatico: quadros guardados para recortar o sinal
   const LARGURA_STREAM = 320;         // quadros menores aceleram a deteccao de movimento
   const MAX_FRAMES_LOTE = 3;           // limita o tempo de cada lote e descarta quadros antigos se a CPU atrasar
@@ -222,6 +237,9 @@
   const rotaConfEl = document.getElementById("rotaConf");
   const rotaDiagEl = document.getElementById("rotaDiag");
   const falarBtn = document.getElementById("btn-falar");
+  const naturalEl = document.getElementById("natural");
+  const naturalTextoEl = document.getElementById("naturalTexto");
+  const naturalNotaEl = document.getElementById("naturalNota");
   const canvas = document.createElement("canvas");
 
   let modo = "auto";       // inicia priorizando sinais dinamicos; letras sao alternativa
@@ -234,6 +252,8 @@
   let seg = null;          // segmentador do modo atual (palavras e automatico)
   let fila = Promise.resolve();  // sinais esperando o LSTM: um de cada vez, na ordem
   let naFila = 0;
+  let naturalChave = "";   // palavras da frase em portugues que esta na tela
+  let tMontar = null;      // temporizador que monta a frase depois de uma pausa
 
   const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -241,6 +261,41 @@
   function renderFrase() {
     fraseTextoEl.textContent = frase;
     fraseEl.classList.toggle("vazia", frase === "");
+    agendarMontagem();
+  }
+
+  // ---- Frase em portugues (spaCy + LLM no servidor) ----
+  const glosasDaFrase = () => frase.trim().split(/\s+/).filter(Boolean);  // palavras reconhecidas; MAIUSCULAS = soletradas
+
+  function agendarMontagem() {
+    clearTimeout(tMontar);
+    const chave = glosasDaFrase().join(" ");
+    if (!chave) { naturalEl.hidden = true; naturalChave = ""; return; }
+    if (chave === naturalChave) { naturalEl.classList.remove("velha"); return; }  // so mudou o espaco
+    naturalEl.classList.add("velha");  // a frase em portugues ficou desatualizada
+    if (modo !== "estatico" && glosasDaFrase().length >= 2) tMontar = setTimeout(montarFraseNatural, PAUSA_MONTAR_MS);
+  }
+
+  async function montarFraseNatural() {
+    clearTimeout(tMontar);
+    const glosas = glosasDaFrase();
+    if (!glosas.length) return;
+    const chave = glosas.join(" ");
+    naturalEl.hidden = false;
+    naturalEl.classList.add("velha");
+    naturalTextoEl.textContent = "Montando a frase...";
+    naturalNotaEl.textContent = "";
+    try {
+      const d = await post("/frase", { glosas });
+      if (chave !== glosasDaFrase().join(" ")) return;  // a frase mudou enquanto o LLM respondia
+      naturalTextoEl.textContent = d.frase;
+      naturalNotaEl.textContent = !d.llm ? "LLM indisponível: mostrando as palavras na ordem dos sinais."
+        : d.confere ? "" : "Confira: alguma palavra pode ter sido trocada.";
+      naturalEl.classList.remove("velha");
+      naturalChave = chave;
+    } catch (e) {
+      naturalTextoEl.textContent = "Não foi possível montar a frase: " + e.message;
+    }
   }
   function adicionar(texto) { frase += texto; renderFrase(); }
   function apagar() {
@@ -252,7 +307,9 @@
   function falar() {
     if (!frase.trim()) return;
     speechSynthesis.cancel();
-    const fala = new SpeechSynthesisUtterance(frase.toLowerCase());
+    // fala a frase em portugues, se ela estiver atualizada; senao, as palavras reconhecidas
+    const pronta = !naturalEl.hidden && !naturalEl.classList.contains("velha");
+    const fala = new SpeechSynthesisUtterance(pronta ? naturalTextoEl.textContent : frase.toLowerCase());
     fala.lang = "pt-BR";
     speechSynthesis.speak(fala);
   }
@@ -327,7 +384,8 @@
   }
 
   // ---- Palavras ----
-  const nomeExibido = (rotulo) => (rotulo === "America" ? "América" : rotulo);
+  const NOMES = { America: "América", Maca: "Maçã" };
+  const nomeExibido = (rotulo) => NOMES[rotulo] || rotulo;
 
   function resumoDiagnostico(d) {
     const q = d.quadros;
@@ -561,11 +619,13 @@
   acao(document.getElementById("btn-apagar"), apagar);
   acao(document.getElementById("btn-limpar"), limpar);
   acao(falarBtn, falar);
+  acao(document.getElementById("btn-montar"), montarFraseNatural);
   if (!("speechSynthesis" in window)) falarBtn.disabled = true;
 
   document.addEventListener("keydown", (e) => {
     if (e.key === " ") { e.preventDefault(); adicionar(" "); }
     if (e.key === "Backspace") { e.preventDefault(); apagar(); }
+    if (e.key === "Enter") { e.preventDefault(); montarFraseNatural(); }
   });
 
   modoEstaticoBtn.addEventListener("click", () => trocarModo("estatico"));
