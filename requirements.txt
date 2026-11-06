@@ -7,6 +7,11 @@ matplotlib
 flask
 tqdm
 kaggle
-spacy 
-sacrebleu 
+spacy
+sacrebleu
 requests
+
+# LLM (agentes: Groq = principal, Gemini = reserva)
+groq
+google-genai
+python-dotenv
