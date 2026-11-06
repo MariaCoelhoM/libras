@@ -1,4 +1,3 @@
-
 import base64
 import json
 import os
@@ -143,43 +142,94 @@ detector = create_detector(HAND_MODEL_PATH)
 
 # ---------------- Dinâmico (Palavras em Libras) ----------------
 
-MODELO_DINAMICO_PATH = caminho(
-    "modelo_palavras_com_rosto_otimizado.keras"
-)
-
 FACE_MODEL_PATH = caminho("face_landmarker.task")
 POSE_MODEL_PATH = caminho("pose_landmarker.task")
 
 FRAMES_POR_VIDEO = 30
 
-print("Carregando modelo de classificacao (dinamico)...")
-modelo_dinamico = tf.keras.models.load_model(MODELO_DINAMICO_PATH)
+# Flags que o assemble_features entende. As demais chaves do config
+# (n_features, timesteps) servem apenas para validar o carregamento.
+CHAVES_FEATURES = ("use_face", "face_norm", "trajectory", "velocity")
 
-labels_dinamico_path = (
-    os.path.splitext(MODELO_DINAMICO_PATH)[0] + "_labels.json"
-)
-
-with open(labels_dinamico_path) as f:
-    LABELS_DINAMICO = json.load(f)
-
-print(f"Classes (dinamico): {LABELS_DINAMICO}")
-
-config_dinamico_path = (
-    os.path.splitext(MODELO_DINAMICO_PATH)[0] + "_config.json"
-)
-
-CONFIG_DINAMICO = {
+CONFIG_PADRAO_DINAMICO = {
     "use_face": True,
     "face_norm": True,
     "trajectory": True,
     "velocity": False,
 }
 
-if os.path.exists(config_dinamico_path):
-    with open(config_dinamico_path) as f:
-        CONFIG_DINAMICO.update(json.load(f))
+# Modelo unico treinado com MINDS + Nucleo Comum (train_unificado.py).
+# Se o arquivo existir, ele e usado sozinho; senao, vale a fusao antiga.
+MODELO_UNIFICADO = "modelo_libras_unificado.keras"
 
-print(f"Representacao (dinamico): {CONFIG_DINAMICO}")
+if os.path.exists(caminho(MODELO_UNIFICADO)):
+    MODELOS_DINAMICOS_ARQUIVOS = {"unificado": MODELO_UNIFICADO}
+
+else:
+    MODELOS_DINAMICOS_ARQUIVOS = {
+        "palavras": "modelo_palavras_com_rosto_otimizado.keras",
+        "nucleo_comum": "modelo_libras_nucleo_comum.keras",
+    }
+
+
+def carregar_modelo_dinamico(nome, arquivo):
+    path = caminho(arquivo)
+    base = os.path.splitext(path)[0]
+
+    print(f"Carregando modelo de classificacao (dinamico: {nome})...")
+    modelo = tf.keras.models.load_model(path)
+
+    with open(base + "_labels.json") as f:
+        labels = json.load(f)
+
+    config = dict(CONFIG_PADRAO_DINAMICO)
+    config_path = base + "_config.json"
+
+    if os.path.exists(config_path):
+        with open(config_path) as f:
+            config.update(json.load(f))
+
+    # Validação com o que o modelo realmente espera
+    try:
+        _, timesteps_modelo, features_modelo = modelo.input_shape
+
+        if config.get("timesteps", FRAMES_POR_VIDEO) != FRAMES_POR_VIDEO:
+            print(
+                f"*** ATENCAO [{nome}]: timesteps do config "
+                f"difere de FRAMES_POR_VIDEO ***"
+            )
+
+        if timesteps_modelo not in (None, FRAMES_POR_VIDEO):
+            print(
+                f"*** ATENCAO [{nome}]: o modelo espera "
+                f"{timesteps_modelo} timesteps ***"
+            )
+
+        if "n_features" in config and config["n_features"] != features_modelo:
+            print(
+                f"*** ATENCAO [{nome}]: n_features do config "
+                f"({config['n_features']}) difere do modelo "
+                f"({features_modelo}) ***"
+            )
+
+    except Exception as erro:
+        print(f"Validacao de formato ignorada [{nome}]:", erro)
+
+    print(f"Classes (dinamico: {nome}): {labels}")
+    print(f"Representacao (dinamico: {nome}): {config}")
+
+    return {
+        "modelo": modelo,
+        "labels": labels,
+        "config": config,
+        "config_features": {k: config[k] for k in CHAVES_FEATURES},
+    }
+
+
+MODELOS_DINAMICOS = {
+    nome: carregar_modelo_dinamico(nome, arquivo)
+    for nome, arquivo in MODELOS_DINAMICOS_ARQUIVOS.items()
+}
 
 print(
     "Carregando HandLandmarker, FaceLandmarker "
@@ -196,9 +246,14 @@ face_detector_dinamico = create_face_detector(
     num_faces=1
 )
 
+# Os detectores são compartilhados entre os modelos:
+# a pose é criada se qualquer um deles precisar.
 pose_detector_dinamico = (
     create_pose_detector(POSE_MODEL_PATH)
-    if needs_pose(CONFIG_DINAMICO)
+    if any(
+        needs_pose(m["config_features"])
+        for m in MODELOS_DINAMICOS.values()
+    )
     else None
 )
 
@@ -247,6 +302,52 @@ def classificar_letra(landmarks):
     idx = int(np.argmax(probs))
 
     return LABELS[idx], float(probs[idx])
+
+
+def classificar_palavra(X_hands, X_face, X_traj):
+    """Roda todos os modelos dinamicos e une as hipoteses num unico ranking.
+
+    Para cada palavra, vale a maior probabilidade entre os modelos que a
+    conhecem. Para quem usa a API, os modelos formam um vocabulario unico.
+    """
+    melhores = {}
+
+    for nome, entrada in MODELOS_DINAMICOS.items():
+        sequence = assemble_features(
+            X_hands,
+            X_face,
+            X_face,
+            X_traj,
+            entrada["config_features"]
+        )
+
+        probs = entrada["modelo"].predict(
+            sequence,
+            verbose=0
+        )[0]
+
+        # Diagnostico no terminal: o que cada modelo respondeu sozinho
+        topo = np.argsort(probs)[::-1][:3]
+
+        print(
+            f"[{nome}] "
+            + " | ".join(
+                f"{entrada['labels'][i]} {probs[i] * 100:.1f}%"
+                for i in topo
+            )
+        )
+
+        for label, p in zip(entrada["labels"], probs):
+            p = float(p)
+
+            if p > melhores.get(label, 0.0):
+                melhores[label] = p
+
+    return sorted(
+        melhores.items(),
+        key=lambda par: par[1],
+        reverse=True
+    )
 
 
 # ---------------- Rotas Flask ----------------
@@ -613,34 +714,22 @@ def predict_palavra():
 
     inicio_clf = time.perf_counter()
 
-    sequence = assemble_features(
-        X_hands,
-        X_face,
-        X_face,
-        X_traj,
-        CONFIG_DINAMICO
-    )
+    ranking = classificar_palavra(X_hands, X_face, X_traj)
 
-    probs = modelo_dinamico.predict(
-        sequence,
-        verbose=0
-    )[0]
-
-    top = np.argsort(probs)[::-1][:3]
-
-    confianca = float(probs[top[0]])
+    top = ranking[:3]
+    label, confianca = top[0]
 
     return jsonify({
-        "label": LABELS_DINAMICO[top[0]],
+        "label": label,
         "confidence": confianca,
         "accepted": confianca >= LIMIAR_DINAMICO,
 
         "top3": [
             {
-                "label": LABELS_DINAMICO[i],
-                "confidence": float(probs[i])
+                "label": rotulo,
+                "confidence": prob
             }
-            for i in top
+            for rotulo, prob in top
         ],
 
         "quadros": {
@@ -650,7 +739,10 @@ def predict_palavra():
             "ombros": com_ombros
         },
 
-        "usa_rosto": bool(CONFIG_DINAMICO["use_face"]),
+        "usa_rosto": any(
+            m["config_features"]["use_face"]
+            for m in MODELOS_DINAMICOS.values()
+        ),
 
         "latency_ms": registrar_latencia(
             "dinamico_total",
