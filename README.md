@@ -6,38 +6,38 @@ por uma CNN (alfabeto) e uma LSTM (palavras). As palavras reconhecidas sao
 organizadas em frases em portugues por agentes de LLM (Groq como principal e
 Gemini como reserva).
 
-## Onde cada parte foi feita
+## Ambiente de desenvolvimento
 
-- **Alfabeto manual (estatico)**: extracao de landmarks e treinamento feitos
-  no proprio **Visual Studio Codespaces (VS Code)**.
-- **Palavras (dinamico, videos)**: extracao de landmarks e treinamento feitos
-  no **Google Colab**.
-- **Visual Studio Codespaces (VS Code)**: todo o resto do TCC (demo Flask,
-  avaliacao, frases/LLM, matriz de confusao, documentacao).
+Todo o projeto - extracao de landmarks, treinamento, avaliacao, demo Flask e
+frases com LLM - foi desenvolvido no **Visual Studio Codespaces (VS Code)**.
 
 ## Estrutura
 
 ```
 libras/                                            modulo comum
   landmarks.py                                      detectores MediaPipe, normalizacao, amostragem de frames, leitura de zip/CSV
+  features.py                                       normalizacao do rosto e trajetoria do punho
   training_utils.py                                 filtro --classes, sinalizador, contagem de amostras
 
 extract_landmarks_imagem.py                          extrai landmarks do alfabeto (imagens, dataset archive/train e archive/test)
-extract_landmarks_video_hands_face_minds_libras.py   extrai landmarks maos+rosto de videos (MINDS-Libras)
+extract_landmarks_minds_libras.py                    extrai landmarks maos+rosto+trajetoria dos videos do MINDS-Libras (recorta e interpola)
+extract_landmarks_video_hands_face_minds_libras.py   versao anterior do extrator de maos+rosto do MINDS-Libras
+extract_landmarks_vlibras.py                         extrai landmarks dos videos do V-Librasil (Nucleo Comum)
 
 train_cnn.py                                         treina o modelo do alfabeto (CNN 1D)
 train_lstm.py                                        treina o modelo de palavras (LSTM)
-train_baseline.py                                    modelo base para comparacao
-matriz.py                                            gera a matriz de confusao de um modelo ja treinado
-resumo_resultados.py                                 resume os resultados dos treinos/avaliacoes
+train_baseline.py                                    baseline (Random Forest / k-NN) para comparar com a CNN e a LSTM
+matriz.py                                            gera a matriz de confusao do modelo unificado
 
 frases.py                                            monta frases a partir das palavras reconhecidas (spaCy + agentes LLM)
 avaliar_frases.py                                    avalia as frases geradas (ex.: sacreBLEU) contra glosas_referencia.csv
 glosas_referencia.csv                                glosas/frases de referencia para a avaliacao
-diagnostico_deteccao.py                              diagnostico da deteccao de maos/rosto
 
+landmarks.npz                                        landmarks do alfabeto
+landmarks_unificado.npz                              landmarks de palavras: MINDS-Libras + V-Librasil unidos
 modelo_alfabeto.keras                                modelo do alfabeto treinado
-modelo_libras_unificado.keras (+ _config/_labels)    modelo unificado de palavras treinado
+modelo_libras_unificado.keras (+ _config/_labels)    modelo de palavras treinado (27 classes)
+resultados/                                          resultados dos experimentos (ex.: baseline em JSON)
 
 app.py                                               servidor Flask (demo ao vivo pela webcam)
 templates/index.html                                 pagina da demo (modo estatico e dinamico)
@@ -84,7 +84,7 @@ wget -O face_landmarker.task \
   https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
 
 wget -O pose_landmarker.task \
-  https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task
+  https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task
 ```
 
 Os tres ficam na raiz do projeto (mesma pasta do `app.py`).
@@ -121,8 +121,19 @@ archive/
 
 ### Palavras (video): MINDS-Libras + V-Librasil
 
-Usamos o **MINDS-Libras** e o **V-Librasil**, apenas com palavras
-especificas, e adicionamos mais videos ao dataset. Vocabulario atual:
+Usamos o **MINDS-Libras** e o **V-Librasil** (Nucleo Comum), apenas com
+palavras especificas, e adicionamos mais videos ao dataset.
+
+- **MINDS-Libras**: 20 classes (Acontecer, Aluno, Amarelo, America, Aproveitar,
+  Bala, Banco, Banheiro, Barulho, Cinco, Conhecer, Espelho, Esquina, Filho,
+  Maca, Medo, Ruim, Sapo, Vacina, Vontade) - 800 amostras.
+- **V-Librasil (Nucleo Comum)**: 7 classes (Compreender, Desculpa, Não, Onde,
+  Por favor, Sim, Surdo) - 138 amostras.
+- **Unificado** (`landmarks_unificado.npz`): as duas fontes juntas, 938
+  amostras e 27 classes. A chave `origem` indica de qual dataset veio cada
+  amostra.
+
+Vocabulario atual do modelo unificado:
 
 ```json
 [
@@ -159,41 +170,63 @@ especificas, e adicionamos mais videos ao dataset. Vocabulario atual:
 O nome do arquivo identifica classe e sinalizador (MINDS-Libras), ex.:
 `01AcontecerSinalizador02-5.mp4` -> classe `Acontecer`, sinalizador `02`.
 
+Cada amostra de palavra tem 30 frames e 406 features por frame (126 das maos,
+276 do rosto normalizado e 4 da trajetoria do punho).
+
 ## 5. Extrair landmarks
 
-### Alfabeto (feito no Codespace)
+Alfabeto:
 
 ```bash
 python extract_landmarks_imagem.py --dataset_dir ./archive --output landmarks.npz
 ```
 
-### Palavras, maos + rosto (feito no Colab)
+MINDS-Libras (maos + rosto + trajetoria; recorta o trecho ativo do sinal e
+interpola os frames sem deteccao):
 
 ```bash
-python extract_landmarks_video_hands_face_minds_libras.py \
+python extract_landmarks_minds_libras.py \
   --dataset_dir ./minds-libras \
-  --filename_regex '^\d+([A-Za-zÀ-ÿ]+)Sinalizador\d+-\d+\.mp4$' \
-  --output landmarks_video_minds.npz \
+  --output landmarks_minds_libras_trimmed_interpolated.npz \
   --failures_log falhas_minds.csv \
   --quiet
 ```
 
+V-Librasil (Nucleo Comum):
+
+```bash
+python extract_landmarks_vlibras.py \
+  --dataset_dir ./v-librasil \
+  --output landmarks_nucleo_comum.npz
+```
+
 ## 6. Treinar
 
-### Alfabeto (feito no Codespace)
-
-Usa a divisao `train/`/`test/` original do dataset, se o `.npz` tiver essa
-informacao:
+Alfabeto (usa a divisao `train/`/`test/` original do dataset, se o `.npz`
+tiver essa informacao):
 
 ```bash
 python train_cnn.py --data landmarks.npz --output modelo_alfabeto.keras \
   --counts_output resultados_alfabeto_contagem.csv
 ```
 
-### Palavras, LSTM (feito no Colab)
+Palavras (LSTM), com rosto normalizado e trajetoria:
 
 ```bash
-!python train_unificado.py --minds landmarks_minds_libras_trimmed_interpolated.npz --nucleo landmarks_nucleo_comum.npz
+python train_lstm.py --data landmarks_unificado.npz \
+  --face_norm --trajectory \
+  --output modelo_libras_unificado.keras
+```
+
+O treino salva ao lado do modelo o `_labels.json` (classes) e o `_config.json`
+(representacao usada).
+
+Baseline (Random Forest ou k-NN) com a mesma representacao e a mesma divisao
+do modelo neural:
+
+```bash
+python train_baseline.py --data landmarks_unificado.npz \
+  --config modelo_libras_unificado_config.json
 ```
 
 Para treinar so um subconjunto do vocabulario, use `--classes`:
@@ -201,10 +234,12 @@ Para treinar so um subconjunto do vocabulario, use `--classes`:
 
 ## 7. Avaliar
 
-Matriz de confusao:
+Matriz de confusao do modelo unificado (reproduz a divisao de teste do
+treino e mostra acuracia geral, por origem e por classe):
 
 ```bash
-python matriz.py --data landmarks_video_minds.npz --model modelo_libras_unificado.keras
+python matriz.py --model modelo_libras_unificado.keras \
+  --data landmarks_unificado.npz --normalize
 ```
 
 Frases (LLM) contra as glosas de referencia:
@@ -222,8 +257,3 @@ python app.py
 Abre em `http://localhost:5000` (ou a porta exposta pelo Codespace). A pagina
 tem um seletor entre modo "Alfabeto (estatico)" e "Palavras (dinamico)".
 
-## Observacoes
-
-- As funcoes de deteccao, normalizacao e leitura de zip/CSV estão em
-  `libras/` e sao compartilhadas por todos os extratores - nao reimplemente
-  localmente num script novo, importe de la.
