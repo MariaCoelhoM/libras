@@ -1,0 +1,76 @@
+{
+  "experimento": "baseline_knn",
+  "argumentos": {
+    "data": "landmarks_unificado.npz",
+    "model": "knn",
+    "experiment": null,
+    "results_dir": "resultados",
+    "n_estimators": 300,
+    "k": 5,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "test_size": 0.375,
+    "split_seed": 42,
+    "folds": 0,
+    "by_signer": false,
+    "signer_regex": "Sinalizador(\\d+)",
+    "config": "modelo_libras_unificado_config.json",
+    "no_face": false,
+    "face_norm": false,
+    "trajectory": false,
+    "classes": null
+  },
+  "representacao": {
+    "use_face": true,
+    "face_norm": true,
+    "trajectory": true
+  },
+  "classes": [
+    "Acontecer",
+    "Aluno",
+    "Amarelo",
+    "America",
+    "Aproveitar",
+    "Bala",
+    "Banco",
+    "Banheiro",
+    "Barulho",
+    "Cinco",
+    "Compreender",
+    "Conhecer",
+    "Desculpa",
+    "Espelho",
+    "Esquina",
+    "Filho",
+    "Maca",
+    "Medo",
+    "Não",
+    "Onde",
+    "Por favor",
+    "Ruim",
+    "Sapo",
+    "Sim",
+    "Surdo",
+    "Vacina",
+    "Vontade"
+  ],
+  "execucoes": [
+    {
+      "divisao": 1,
+      "seed": 0,
+      "acuracia": 0.5710227272727273,
+      "f1_macro": 0.5349836280251894,
+      "acuracia_por_origem": {
+        "minds": 0.6133333333333333,
+        "nucleo": 0.3269230769230769
+      }
+    }
+  ],
+  "acuracia_media": 0.5710227272727273,
+  "acuracia_desvio": 0.0,
+  "f1_macro_medio": 0.5349836280251894,
+  "f1_macro_desvio": 0.0
+}

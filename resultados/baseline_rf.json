@@ -1,0 +1,96 @@
+{
+  "experimento": "baseline_rf",
+  "argumentos": {
+    "data": "landmarks_unificado.npz",
+    "model": "rf",
+    "experiment": null,
+    "results_dir": "resultados",
+    "n_estimators": 300,
+    "k": 5,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "test_size": 0.375,
+    "split_seed": 42,
+    "folds": 0,
+    "by_signer": false,
+    "signer_regex": "Sinalizador(\\d+)",
+    "config": "modelo_libras_unificado_config.json",
+    "no_face": false,
+    "face_norm": false,
+    "trajectory": false,
+    "classes": null
+  },
+  "representacao": {
+    "use_face": true,
+    "face_norm": true,
+    "trajectory": true
+  },
+  "classes": [
+    "Acontecer",
+    "Aluno",
+    "Amarelo",
+    "America",
+    "Aproveitar",
+    "Bala",
+    "Banco",
+    "Banheiro",
+    "Barulho",
+    "Cinco",
+    "Compreender",
+    "Conhecer",
+    "Desculpa",
+    "Espelho",
+    "Esquina",
+    "Filho",
+    "Maca",
+    "Medo",
+    "Não",
+    "Onde",
+    "Por favor",
+    "Ruim",
+    "Sapo",
+    "Sim",
+    "Surdo",
+    "Vacina",
+    "Vontade"
+  ],
+  "execucoes": [
+    {
+      "divisao": 1,
+      "seed": 0,
+      "acuracia": 0.8920454545454546,
+      "f1_macro": 0.8376306768643283,
+      "acuracia_por_origem": {
+        "minds": 0.96,
+        "nucleo": 0.5
+      }
+    },
+    {
+      "divisao": 1,
+      "seed": 1,
+      "acuracia": 0.9005681818181818,
+      "f1_macro": 0.8542619421049159,
+      "acuracia_por_origem": {
+        "minds": 0.9666666666666667,
+        "nucleo": 0.5192307692307693
+      }
+    },
+    {
+      "divisao": 1,
+      "seed": 2,
+      "acuracia": 0.8835227272727273,
+      "f1_macro": 0.8237178393092373,
+      "acuracia_por_origem": {
+        "minds": 0.9633333333333334,
+        "nucleo": 0.4230769230769231
+      }
+    }
+  ],
+  "acuracia_media": 0.8920454545454545,
+  "acuracia_desvio": 0.006958777678361273,
+  "f1_macro_medio": 0.8385368194261605,
+  "f1_macro_desvio": 0.012486028849745593
+}
