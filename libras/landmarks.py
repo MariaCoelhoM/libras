@@ -32,13 +32,20 @@ def normalize_landmarks(landmarks):
 
 # ---------------- Detectores MediaPipe ----------------
 
-def create_detector(model_path, num_hands=1):
-    """HandLandmarker em modo IMAGEM (um frame isolado por vez)."""
+def create_detector(model_path, num_hands=1, min_conf=0.5):
+    """HandLandmarker em modo IMAGEM (um frame isolado por vez).
+
+    min_conf: confianca minima de deteccao/presenca/rastreio (0.5 = padrao do
+    MediaPipe). O /stream do app usa 0.3 e 2 maos, como o detector de video.
+    """
     base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
     options = mp_vision.HandLandmarkerOptions(
         base_options=base_options,
         num_hands=num_hands,
         running_mode=mp_vision.RunningMode.IMAGE,
+        min_hand_detection_confidence=min_conf,
+        min_hand_presence_confidence=min_conf,
+        min_tracking_confidence=min_conf,
     )
     return mp_vision.HandLandmarker.create_from_options(options)
 

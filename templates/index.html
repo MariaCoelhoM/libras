@@ -2,24 +2,36 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Libras">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/static/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <title>Libras - Tradutor Bidirecional</title>
 <style>
   :root {
-    --bg: #f4f6f8; --surface: #ffffff; --fg: #111827; --muted: #6b7280; --line: #e3e7ec;
-    --accent: #0f766e; --accent-soft: #d8f1ed; --accent-fg: #ffffff; --ok: #16a34a; --off: #9ca3af;
+    --bg: #f8fafc; --surface: #ffffff; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0;
+    --accent: #0f766e; --accent-soft: #f0fdfa; --accent-fg: #ffffff; --ok: #16a34a; --off: #94a3b8;
+    --radius-lg: 20px; --radius-md: 14px; --radius-sm: 10px;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0d1012; --surface: #161a1e; --fg: #eef1f4; --muted: #98a2ae; --line: #262c32;
-      --accent: #2dd4bf; --accent-soft: #11302d; --accent-fg: #06201d; --ok: #4ade80; --off: #5b6670;
+      --bg: #0b0f17; --surface: #151c28; --fg: #f1f5f9; --muted: #8899ac; --line: #1e293b;
+      --accent: #2dd4bf; --accent-soft: #092c28; --accent-fg: #041d1a; --ok: #4ade80; --off: #475569;
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.4);
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Segoe UI", system-ui, -apple-system, sans-serif; line-height: 1.5; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
   main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 40px; }
 
-  /* VLibras (avatar e ícone das mãos) só aparece na aba Português ➔ Libras */
+  /* VLibras */
   body.aba-camera [vw],
   body.aba-camera [vw-access-button],
   body.aba-camera [vw-plugin-wrapper],
@@ -27,20 +39,19 @@
     display: none !important;
   }
 
-  /* Texto do botão via CSS: o VLibras não consegue "ler" e sinalizar o rótulo */
   #btn-gerar-sinais { font-size: 1rem; }
   #btn-gerar-sinais::before { content: "Traduzir para Sinais"; }
 
-  /* Sistema de Abas */
-  .navegacao-abas { display: flex; gap: 10px; margin-bottom: 24px; border-bottom: 2px solid var(--line); padding-bottom: 0px; }
-  .aba-btn { background: transparent; border: none; font-size: 1.1rem; font-weight: 600; color: var(--muted); cursor: pointer; padding: 12px 20px; border-radius: 8px 8px 0 0; transition: color 0.2s, background 0.2s; margin-bottom: -2px; }
+  /* Navegação por Abas */
+  .navegacao-abas { display: flex; gap: 10px; margin-bottom: 24px; border-bottom: 1.5px solid var(--line); padding-bottom: 0px; }
+  .aba-btn { background: transparent; border: none; font-size: 1.05rem; font-weight: 600; color: var(--muted); cursor: pointer; padding: 12px 20px; border-radius: 8px 8px 0 0; transition: color 0.2s, background 0.2s; margin-bottom: -1.5px; }
   .aba-btn:hover { color: var(--fg); background: var(--surface); }
   .aba-btn.ativa { color: var(--accent); border-bottom: 3px solid var(--accent); }
 
-  /* Área de Texto para Libras (Tradutor Inverso) */
+  /* Tradutor Inverso */
   .tradutor-inverso { display: flex; flex-direction: column; gap: 16px; width: 100%; }
   .caixa-texto-container { max-width: 60%; } 
-  .campo-texto { width: 100%; min-height: 200px; padding: 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font-size: 1.2rem; font-family: inherit; resize: vertical; margin-top: 10px; }
+  .campo-texto { width: 100%; min-height: 200px; padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--bg); color: var(--fg); font-size: 1.15rem; font-family: inherit; resize: vertical; margin-top: 10px; }
   .campo-texto:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
   
   @media (max-width: 820px) { .caixa-texto-container { max-width: 100%; } }
@@ -55,76 +66,246 @@
   .modos button { border: 0; background: transparent; color: var(--muted); padding: 8px 18px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
   .modos button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
 
-
   .layout { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; align-items: start; }
   @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
 
-  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px; }
-  .card h2 { font-size: 0.95rem; font-weight: 600; color: var(--muted); margin: 0 0 10px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-sm); }
+  .card h2 { font-size: 0.85rem; font-weight: 700; color: var(--muted); margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.08em; }
 
-  /* camera */
-  .camera { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 14px; overflow: hidden; }
+  /* Câmera */
+  .camera { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: var(--radius-md); overflow: hidden; }
   video { width: 100%; height: 100%; display: block; transform: scaleX(-1); }
   .guia { position: absolute; left: 30%; top: 10%; width: 40%; height: 35%; border: 2px dashed rgba(255, 255, 255, 0.75); border-radius: 10px; pointer-events: none; }
-  .guia span { position: absolute; top: -24px; left: 0; font-size: 0.8rem; color: #fff; text-shadow: 0 0 4px #000; }
-  .pilula { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 0.82rem; backdrop-filter: blur(6px); }
-  .pilula i { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
+  .guia span { position: absolute; top: -22px; left: 0; font-size: 0.75rem; color: #fff; text-shadow: 0 0 4px #000; font-weight: 500; }
+  
+  .pilula { position: absolute; top: 10px; left: 10px; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 0.75rem; backdrop-filter: blur(8px); z-index: 5; }
+  .pilula i { width: 6px; height: 6px; border-radius: 50%; background: var(--off); }
   .pilula.ativa i { background: var(--ok); }
 
-  .detector { position: absolute; left: 12px; bottom: 12px; width: 92px; height: 92px; border-radius: 50%; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); display: grid; place-items: center; }
+  .detector { position: absolute; left: 12px; bottom: 12px; width: 80px; height: 80px; border-radius: 50%; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px); display: grid; place-items: center; }
   .detector svg { position: absolute; inset: 0; transform: rotate(-90deg); }
   .detector circle { fill: none; stroke-width: 5; }
   .detector .trilho { stroke: rgba(255, 255, 255, 0.2); }
   .detector .barra { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 251.3; stroke-dashoffset: 251.3; transition: stroke-dashoffset .25s linear; }
   .detector.cheio .barra { stroke: var(--ok); }
-  .detector b { font-size: 2.4rem; color: #fff; font-weight: 700; }
+  .detector b { font-size: 2rem; color: #fff; font-weight: 700; }
   .detector b.vazio { color: rgba(255, 255, 255, 0.4); }
 
-  .frase { min-height: 130px; padding: 16px 18px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); font-size: 2rem; font-weight: 600; letter-spacing: 0.02em; white-space: pre-wrap; word-break: break-word; }
-  .frase.vazia #fraseTexto::before { content: "Sua frase aparece aqui"; color: var(--muted); font-weight: 400; font-size: 1.1rem; letter-spacing: 0; }
-  .cursor { display: inline-block; width: 3px; height: 1.9rem; margin-left: 2px; vertical-align: text-bottom; background: var(--accent); animation: piscar 1s steps(1) infinite; }
+  .frase { min-height: 120px; padding: 16px; border-radius: var(--radius-md); background: var(--bg); border: 1px solid var(--line); font-size: 1.7rem; font-weight: 600; letter-spacing: 0.01em; white-space: pre-wrap; word-break: break-word; }
+  .frase.vazia #fraseTexto::before { content: "Sua frase aparece aqui..."; color: var(--muted); font-weight: 400; font-size: 1rem; letter-spacing: 0; }
+  .cursor { display: inline-block; width: 3px; height: 1.7rem; margin-left: 2px; vertical-align: text-bottom; background: var(--accent); animation: piscar 1s steps(1) infinite; }
   @keyframes piscar { 50% { opacity: 0; } }
 
   .acoes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
-  .acoes button, #gravar { font: inherit; font-weight: 600; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; transition: background .15s; }
+  .acoes button, #gravar { font: inherit; font-weight: 600; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; transition: background .15s, transform .1s; }
+  .acoes button:active { transform: scale(0.98); }
   .acoes button:hover { background: var(--bg); }
   .acoes .largo { grid-column: 1 / -1; }
-  .natural { margin-top: 12px; padding: 14px 18px; border-radius: 14px; background: var(--surface); border: 1px solid var(--accent); }
+  
+  .natural { margin-top: 12px; padding: 14px 18px; border-radius: var(--radius-md); background: var(--surface); border: 1.5px solid var(--accent); }
   .natural.velha { opacity: 0.55; border-color: var(--line); }
-  .natural .rotulo { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-  .natural p { margin: 6px 0 0; font-size: 1.35rem; font-weight: 600; }
-  .natural small { color: var(--muted); }
+  .natural .rotulo { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+  .natural p { margin: 4px 0 0; font-size: 1.3rem; font-weight: 600; }
+  .natural small { color: var(--muted); display: block; margin-top: 4px; }
+  
   .acoes .principal, #gravar { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-  .acoes .principal:hover { background: var(--accent); filter: brightness(1.08); }
+  .acoes .principal:hover { filter: brightness(1.08); }
   button:disabled { opacity: 0.45; cursor: default; }
 
-  .ajuda { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); font-size: 0.9rem; }
+  .ajuda { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); font-size: 0.88rem; }
   .ajuda p { margin: 0; }
   .ajuda p + p { margin-top: 4px; color: var(--muted); }
 
-  .roteador { margin-top: 14px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); }
+  /* Roteador & Diagnóstico */
+  .roteador { margin-top: 14px; padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--bg); }
   .rotas { display: flex; gap: 8px; }
-  .chip { flex: 1; text-align: center; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+  .chip { flex: 1; text-align: center; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line); color: var(--muted); font-size: 0.82rem; font-weight: 600; background: var(--surface); }
   .chip.ativo { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-  .medidor { height: 8px; margin-top: 12px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .medidor { height: 8px; margin-top: 10px; border-radius: 999px; background: var(--line); overflow: hidden; }
   .medidor div { height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
 
-  .feedback-sinal { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 0.92rem; min-height: 48px; }
+  .diag-card { margin-top: 10px; padding: 10px 12px; background: var(--surface); border-radius: var(--radius-sm); border: 1px solid var(--line); font-size: 0.85rem; }
+  .diag-card strong { color: var(--fg); display: block; margin-bottom: 2px; }
+
+  .feedback-sinal { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); font-size: 0.9rem; min-height: 46px; }
   .feedback-sinal[hidden] { display: none !important; }
-  .feedback-sinal.processando { border-color: var(--accent); background: var(--accent-soft); }
-  .feedback-sinal.sucesso { border-color: var(--ok); }
-  .feedback-sinal.erro { border-color: #d97706; }
-  .feedback-icone { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; background: var(--off); }
-  #status, #latencia { color: var(--muted); font-size: 0.9rem; margin: 14px 2px 0; }
+  .feedback-sinal.processando { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
+  .feedback-sinal.sucesso { border-color: var(--ok); background: rgba(22, 163, 74, 0.08); }
+  .feedback-sinal.erro { border-color: #d97706; background: rgba(217, 119, 6, 0.08); }
+  .feedback-icone { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--off); }
+  #status, #latencia { color: var(--muted); font-size: 0.85rem; margin: 10px 2px 0; }
   [hidden] { display: none !important; }
+
+  /* Dispositivos móveis */
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); -webkit-tap-highlight-color: transparent; }
+  button { touch-action: manipulation; }
+  video.traseira { transform: none; }
+  .btn-cam { position: absolute; top: 10px; right: 10px; z-index: 6; border: 0; padding: 6px 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.65); color: #fff; font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; backdrop-filter: blur(8px); }
+  .btn-instalar { border: 0; padding: 8px 16px; border-radius: 999px; background: var(--accent); color: var(--accent-fg); font: inherit; font-weight: 600; cursor: pointer; }
+
+  /* ---- TELA INICIAL (CLEAN & ELEGANTE - PARA TCC) ---- */
+  .escolha { 
+    position: fixed; inset: 0; z-index: 1000; 
+    display: flex; flex-direction: column; align-items: center; justify-content: center; 
+    padding: 32px 20px; background: var(--bg); overflow-y: auto; 
+  }
+  .escolha-container { 
+    max-width: 600px; width: 100%; text-align: center; 
+    display: flex; flex-direction: column; align-items: center; gap: 32px; 
+  }
+  .escolha-brand { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  
+  .escolha-tag { 
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; 
+    color: var(--accent); background: var(--accent-soft); padding: 5px 14px; border-radius: 999px; 
+    border: 1px solid rgba(15, 118, 110, 0.2); 
+  }
+  .escolha h1 { 
+    font-size: 2.3rem; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: var(--fg); line-height: 1.15; 
+  }
+  .escolha .sub { margin: 0; color: var(--muted); font-size: 1rem; max-width: 440px; font-weight: 400; line-height: 1.5; }
+  
+  .escolha-opcoes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; width: 100%; margin-top: 8px; }
+  @media (max-width: 580px) { .escolha-opcoes { grid-template-columns: 1fr; } }
+  
+  .opcao { 
+    position: relative; display: flex; flex-direction: column; align-items: flex-start; text-align: left; 
+    gap: 12px; padding: 24px; border-radius: var(--radius-lg); border: 1.5px solid var(--line); 
+    background: var(--surface); color: var(--fg); font: inherit; cursor: pointer; transition: all .2s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: var(--shadow-sm); 
+  }
+  .opcao:hover, .opcao:focus-visible { 
+    border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); outline: none; 
+  }
+  .opcao:active { transform: scale(0.98); }
+  .opcao.sugerida { border-color: var(--accent); }
+  .opcao .icone-box { 
+    width: 44px; height: 44px; border-radius: 12px; background: var(--bg); display: grid; place-items: center; font-size: 1.4rem; border: 1px solid var(--line); 
+  }
+  .opcao strong { font-size: 1.15rem; font-weight: 700; color: var(--fg); }
+  .opcao .desc { color: var(--muted); font-size: 0.85rem; line-height: 1.45; margin: 0; }
+  .opcao .selo { 
+    position: absolute; top: 16px; right: 16px; padding: 3px 8px; border-radius: 999px; 
+    background: var(--accent); color: var(--accent-fg); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; 
+  }
+
+  .escolha .dica { margin: 0; color: var(--muted); font-size: 0.82rem; font-weight: 400; opacity: 0.85; }
+
+  .trocar-versao { margin-left: auto; align-self: center; margin-bottom: 4px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+  .trocar-versao:hover { color: var(--fg); border-color: var(--accent); }
+
+  /* ---- AJUSTES ESPECÍFICOS PARA CELULAR (DESPOLUÍDO E LIMPO) ---- */
+  body.celular { font-size: 15px; }
+  body.celular main { max-width: 100%; padding: 0 0 32px; }
+  
+  body.celular .navegacao-abas { position: sticky; top: 0; z-index: 40; gap: 0; margin: 0 0 16px; padding: 6px; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+  body.celular .aba-btn { flex: 1; padding: 10px 4px; font-size: 0.92rem; text-align: center; border-radius: 8px; border-bottom: none; }
+  body.celular .aba-btn.ativa { background: var(--accent-soft); color: var(--accent); border-bottom: none; }
+  
+  body.celular .trocar-versao { margin-bottom: 0; padding: 6px 10px; font-size: 0.85rem; border-radius: 8px; }
+  body.celular header { margin: 0 16px 14px; flex-direction: column; align-items: flex-start; gap: 8px; }
+  body.celular header p { display: none; }
+  body.celular h1 { font-size: 1.4rem; }
+  
+  body.celular .controles, body.celular .modos { width: 100%; }
+  body.celular .modos { padding: 4px; display: flex; width: 100%; }
+  body.celular .modos button { flex: 1; min-height: 44px; padding: 6px 4px; font-size: 0.9rem; }
+  body.celular .btn-instalar { width: 100%; min-height: 44px; font-size: 0.95rem; }
+  
+  body.celular #dica-ios { margin: 0 16px 14px !important; }
+  body.celular .layout { gap: 14px; padding: 0 12px; }
+  body.celular .card { padding: 16px; border-radius: 16px; border: 1px solid var(--line); }
+  
+  /* Câmera & Pílulas no Celular */
+  body.celular .camera { width: 100%; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+  body.celular .pilula { top: 8px; left: 8px; padding: 3px 8px; font-size: 0.72rem; gap: 5px; }
+  body.celular .pilula i { width: 5px; height: 5px; }
+  body.celular .guia span { top: -18px; font-size: 0.7rem; }
+  body.celular .btn-cam { padding: 6px 10px; font-size: 0.78rem; }
+  body.celular .detector { width: 72px; height: 72px; }
+  body.celular .detector b { font-size: 1.8rem; }
+
+  /* Frase e Ações no Celular */
+  body.celular .frase { min-height: 100px; padding: 14px; border-radius: 14px; font-size: 1.7rem; background: var(--surface); border: 1px solid var(--line); }
+  body.celular .frase.vazia #fraseTexto::before { font-size: 0.95rem; }
+  
+  body.celular .acoes { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 14px; }
+  body.celular .acoes button { min-height: 48px; border-radius: 12px; font-size: 0.98rem; font-weight: 600; }
+  body.celular .acoes .largo { min-height: 52px; font-size: 0.98rem; }
+
+  /* Frase Traduzida & Roteador no Celular */
+  body.celular .natural { margin-top: 14px; padding: 14px; border-radius: 14px; }
+  body.celular .natural p { font-size: 1.25rem; }
+
+  body.celular .roteador { margin-top: 14px; padding: 14px; border-radius: 14px; background: var(--surface); }
+  body.celular .chip { padding: 10px 6px; font-size: 0.85rem; border-radius: 8px; }
+  body.celular .medidor { height: 8px; margin-top: 10px; }
+  body.celular #rotaTexto { font-size: 0.82rem; margin: 8px 0 6px; font-weight: 500; }
+  
+  body.celular .diag-card { padding: 10px 12px; margin-top: 8px; font-size: 0.85rem; border-radius: 10px; line-height: 1.35; }
+  body.celular .feedback-sinal { padding: 12px 14px; font-size: 0.9rem; min-height: 48px; border-radius: 12px; margin-top: 14px; }
+  body.celular #status { font-size: 0.88rem; margin: 12px 2px 0; font-weight: 500; }
+  body.celular #latencia { font-size: 0.78rem; margin-top: 2px; }
+
+  body.celular .ajuda { margin-top: 14px; padding: 12px 14px; border-radius: 12px; font-size: 0.88rem; line-height: 1.45; }
+  body.celular .caixa-texto-container { max-width: 100%; }
+  body.celular .campo-texto { min-height: 180px; padding: 14px; font-size: 1.1rem; border-radius: 14px; }
+
+  /* Layout paisagem em celulares */
+  @media (orientation: landscape) and (max-height: 550px) {
+    body.celular main { padding: 0 10px 20px; }
+    body.celular .navegacao-abas { margin-bottom: 8px; padding: 4px; }
+    body.celular .aba-btn { padding: 6px 4px; }
+    body.celular header { margin: 0 0 8px; }
+    body.celular .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 12px; padding: 0; }
+    body.celular .card { padding: 12px; border-radius: 12px; }
+    body.celular .camera { width: 100%; height: auto; aspect-ratio: 4/3; }
+    body.celular .frase { min-height: 80px; font-size: 1.4rem; padding: 10px; }
+    body.celular .acoes { gap: 6px; margin-top: 8px; }
+    body.celular .acoes button { min-height: 40px; font-size: 0.9rem; }
+  }
 </style>
 </head>
 <body class="aba-camera">
+
+<!-- Tela inicial: escolha do aparelho (DESIGN CLEAN & ELEGANTE) -->
+<div class="escolha" id="escolha">
+  <div class="escolha-container">
+    <div class="escolha-brand">
+      <span class="escolha-tag">Projeto de Pesquisa & TCC</span>
+      <h1>Tradutor de Libras</h1>
+      <p class="sub">Reconhecimento computacional e tradução em tempo real</p>
+    </div>
+    
+    <div class="escolha-opcoes">
+      <button class="opcao" id="opcao-computador" type="button">
+        <span class="selo" hidden>Sugerido</span>
+        <div class="icone-box">💻</div>
+        <div>
+          <strong>Computador</strong>
+          <p class="desc">Interface ampla para monitores, câmeras fixas e atalhos via teclado.</p>
+        </div>
+      </button>
+      
+      <button class="opcao" id="opcao-celular" type="button">
+        <span class="selo" hidden>Sugerido</span>
+        <div class="icone-box">📱</div>
+        <div>
+          <strong>Celular</strong>
+          <p class="desc">Layout responsivo com botões expandidos e acurácia otimizada.</p>
+        </div>
+      </button>
+    </div>
+    
+    <p class="dica">Você pode alternar o modo a qualquer momento através do botão "Versão" no topo da página.</p>
+  </div>
+</div>
+
 <main>
   <!-- Abas de Navegação -->
   <nav class="navegacao-abas">
     <button id="aba-camera" class="aba-btn ativa">Libras ➔ Português</button>
     <button id="aba-teclado" class="aba-btn">Português ➔ Libras</button>
+    <button id="btn-trocar-versao" class="trocar-versao" type="button" title="Trocar entre computador e celular">⇄ <span class="txt">Versão</span></button>
   </nav>
 
   <!-- Aba 1: Câmera (Libras -> Português) -->
@@ -132,9 +313,10 @@
     <header>
       <div>
         <h1>Libras ao vivo</h1>
-        <p>Reconhecimento de sinais pela câmera</p>
+        <p>Reconhecimento inteligente de sinais pela câmera</p>
       </div>
       <div class="controles">
+        <button id="btn-instalar" class="btn-instalar" hidden>Instalar app</button>
         <div class="modos">
           <button id="modo-estatico" aria-pressed="false">Alfabeto</button>
           <button id="modo-palavras" aria-pressed="false">Palavras</button>
@@ -143,49 +325,68 @@
       </div>
     </header>
 
+    <p id="dica-ios" class="ajuda" style="margin: 0 0 14px;" hidden>No iPhone: toque em Compartilhar e depois em "Adicionar à Tela de Início" para instalar o app.</p>
+
     <div class="layout">
+      <!-- PAINEL DA CÂMERA -->
       <section class="card">
         <h2>Câmera</h2>
         <div class="camera" id="camera">
           <video id="video" autoplay playsinline muted></video>
           <div class="guia" id="guia" hidden><span>rosto aqui</span></div>
           <div class="pilula" id="pilula"><i></i><span id="pilulaTexto">Iniciando...</span></div>
+          <button id="btn-camera" class="btn-cam" aria-label="Trocar câmera" hidden>Trocar câmera</button>
           <div class="detector" id="detector" hidden>
             <svg viewBox="0 0 92 92"><circle class="trilho" cx="46" cy="46" r="40"/><circle class="barra" id="barra" cx="46" cy="46" r="40"/></svg>
             <b id="letra" class="vazio">-</b>
           </div>
         </div>
+
         <div id="feedbackSinal" class="feedback-sinal" role="status" aria-live="polite" hidden>
           <span class="feedback-icone" aria-hidden="true"></span>
           <span id="feedbackSinalTexto">Aguardando sinal...</span>
         </div>
+        
         <p id="status">Iniciando a câmera...</p>
         <p id="latencia"></p>
       </section>
 
+      <!-- PAINEL DE RESULTADOS E FRASE -->
       <section class="card" id="painel-estatico">
         <h2>Sua frase</h2>
         <div class="frase vazia" id="frase"><span id="fraseTexto"></span><span class="cursor"></span></div>
+        
         <div class="acoes">
           <button id="btn-espaco" class="principal">Espaço</button>
           <button id="btn-apagar">Apagar</button>
           <button id="btn-limpar">Limpar</button>
           <button id="btn-falar">Falar</button>
-          <button id="btn-montar" class="largo">Montar frase em português (Enter)</button>
+          <button id="btn-montar" class="largo">Montar frase em português</button>
         </div>
+
         <div class="natural velha" id="natural" hidden>
           <span class="rotulo">Frase em português</span>
           <p id="naturalTexto"></p>
           <small id="naturalNota"></small>
         </div>
+
+        <!-- ROTEADOR & DIAGNÓSTICO -->
         <div class="roteador" id="roteador" hidden>
-          <div class="rotas"><span class="chip ativo" id="chip-cnn">CNN · letras</span><span class="chip" id="chip-lstm">LSTM · palavras</span></div>
+          <div class="rotas">
+            <span class="chip ativo" id="chip-cnn">CNN · Letras</span>
+            <span class="chip" id="chip-lstm">LSTM · Palavras</span>
+          </div>
           <div class="medidor"><div id="medidorBarra"></div></div>
           <p id="rotaTexto">Movimento: -</p>
-          <div id="rotaPalavra"></div>
-          <p id="rotaConf"></p>
-          <p id="rotaDiag"></p>
+          
+          <div class="diag-card" id="card-diagnostico">
+            <strong>Palavra Detectada & Acurácia:</strong>
+            <div id="rotaPalavra" style="font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-top: 2px;"></div>
+            <div id="rotaConf" style="font-weight: 600; margin-top: 2px;"></div>
+            <div id="rotaDiag" style="color: var(--muted); font-size: 0.8rem; margin-top: 4px; line-height: 1.35;"></div>
+          </div>
         </div>
+
         <div class="ajuda" id="ajuda-estatico">
           <p>Faça uma letra e mantenha por cerca de 1 segundo: ela entra na frase sozinha.</p>
           <p>Para repetir a mesma letra, tire a mão da câmera e mostre de novo. Atalhos: barra de espaço e Backspace.</p>
@@ -242,12 +443,10 @@
 <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
 
 <script>
-  const VERSAO_PAGINA = "v5";
+  const VERSAO_PAGINA = "v8";
   console.log("[Libras] página carregada, versão " + VERSAO_PAGINA);
 
   let vlibrasWidget = null;
-
-  // Tudo que o VLibras cria na página (inclusive elementos que ele adiciona depois)
   const SELETOR_VLIBRAS = "[vw], [vp], [vw-access-button], [vw-plugin-wrapper], [vp-box], [vp-access-button]";
 
   function aplicarVisibilidadeAvatar() {
@@ -263,7 +462,6 @@
     });
   }
 
-  // O widget cria elementos novos depois do carregamento: reaplica a regra neles
   new MutationObserver(() => {
     if (!document.body.classList.contains("aba-teclado")) aplicarVisibilidadeAvatar();
   }).observe(document.body, { childList: true, subtree: true });
@@ -294,7 +492,6 @@
     return candidatos.find((c) => c && typeof c.translate === "function") || null;
   }
 
-  // Plano B: seleciona o texto numa área da página, como se o usuário tivesse selecionado
   function traduzirPorSelecao(texto) {
     let alvo = document.getElementById("vlibras-selecao");
     if (!alvo) {
@@ -336,14 +533,20 @@
   const ANEL = 251.3;                 
   const PAUSA_MONTAR_MS = 2500;       
   const BUFFER_MS = 6000;             
-  const LARGURA_STREAM = 320;         
-  const MAX_FRAMES_LOTE = 3;          
-  const FRAMES_SINAL = 30;            
+  const MOVEL = window.matchMedia("(pointer: coarse)").matches; 
+  const LARGURA_STREAM = 480;
+  const MAX_FRAMES_LOTE = 8;
+  const SID = Math.random().toString(36).slice(2);
+  let resetPendente = true; 
+  let descartados = 0;      
+  const DEBUG_SEG = true;   
+  const FRAMES_SINAL = 30;    
   const MIN_QUADROS_SINAL = 6;
 
   const SEG = {
-    entrada: 0.30, saida: 0.18,
-    entradaMs: 100, fimMs: 300,
+    entrada: 1.5, saida: 0.9,
+    toleranciaMs: 500,
+    entradaMs: 150, fimMs: 800,
     margemMs: 300, minSinalMs: 500, maxSinalMs: 4000,
     holdLetraMs: 900, bloqueioMs: 700,
   };
@@ -428,7 +631,6 @@
   // ---- Lógica do Teclado -> VLibras ----
   const textoEntrada = document.getElementById("texto-entrada");
 
-  // Captura o clique ANTES do VLibras, para ele não traduzir o rótulo do botão
   window.addEventListener("click", (e) => {
     if (!e.target.closest("#btn-gerar-sinais")) return;
     e.stopImmediatePropagation();
@@ -440,12 +642,11 @@
     const msg = document.getElementById("msg-avatar");
     msg.textContent = "Enviando para o avatar...";
     abrirAvatar();
-    // pequena espera caso o avatar tenha acabado de abrir
     setTimeout(() => {
       const via = traduzirParaLibras(texto);
       msg.textContent = via === "api"
         ? "Texto enviado ao avatar."
-        : "A API do player não foi encontrada; tentei pela seleção de texto. Se o avatar não sinalizar, abra o console (F12) e me envie as mensagens [Libras].";
+        : "A API do player não foi encontrada; tentei pela seleção de texto.";
     }, 800);
   }, true);
 
@@ -549,11 +750,22 @@
   }
 
   // ---- Rede ----
-  function frameBase64(largura, qualidade) {
-    const w = largura || video.videoWidth;
+  function frameBase64(largura, qualidade, moldar) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const emPe = !!moldar && vh > vw;
+    const cw = emPe ? vh * 4 / 3 : vw;            
+    const w = largura || (emPe ? 640 : vw);
     canvas.width = w;
-    canvas.height = Math.round(video.videoHeight * w / video.videoWidth);
-    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.height = Math.round(vh * w / cw);
+    const ctx = canvas.getContext("2d");
+    if (emPe) {
+      const escala = w / cw;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, (cw - vw) / 2 * escala, 0, vw * escala, vh * escala);
+    } else {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    }
     return canvas.toDataURL("image/jpeg", qualidade === undefined ? 0.8 : qualidade);
   }
 
@@ -567,15 +779,63 @@
     return resposta.json();
   }
 
+  let facing = "user";   
+  const btnCamera = document.getElementById("btn-camera");
+
+  function quadroPaisagem() { return !video.videoWidth || video.videoWidth >= video.videoHeight; }
+
+  function larguraStream() {
+    const base = document.body.classList.contains("celular") ? 384 : LARGURA_STREAM;   
+    return quadroPaisagem() ? base : Math.max(base, 480);
+  }
+
+  function atualizarGuia() {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return;
+    let esq = 0.30, larg = 0.40;
+    if (vh > vw) {
+      const cw = vh * 4 / 3;
+      esq = (0.30 * cw - (cw - vw) / 2) / vw;
+      larg = 0.40 * cw / vw;
+    }
+    guia.style.left = (esq * 100) + "%";
+    guia.style.width = (larg * 100) + "%";
+    guia.style.top = "10%";
+    guia.style.height = "35%";
+  }
+
+  function ajustarProporcao() {
+    if (video.videoWidth) camera.style.aspectRatio = video.videoWidth + " / " + video.videoHeight;
+    atualizarGuia();
+  }
+
+  video.addEventListener("resize", () => { ajustarProporcao(); trocarModo(modo); });
+
+  async function manterTelaLigada() {
+    try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch (e) { }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") manterTelaLigada();
+  });
+
   async function iniciarCamera() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      if (video.srcObject) video.srcObject.getTracks().forEach((t) => t.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
       video.srcObject = stream;
+      video.classList.toggle("traseira", facing === "environment");   
       await video.play();
-      camera.style.aspectRatio = video.videoWidth + " / " + video.videoHeight;
+      ajustarProporcao();
       statusEl.textContent = "Câmera pronta.";
+      manterTelaLigada();
+      const cameras = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+      btnCamera.hidden = cameras.length < 2;
     } catch (e) {
-      statusEl.textContent = "Não foi possível acessar a câmera: " + e.message;
+      statusEl.textContent = "Não foi possível acessar a câmera: " + e.message +
+        (window.isSecureContext ? "" : " (o celular só libera a câmera em HTTPS)");
       pilulaTexto.textContent = "Sem câmera";
     }
   }
@@ -585,15 +845,15 @@
 
   function resumoDiagnostico(d) {
     const q = d.quadros;
-    let texto = "Mãos em " + q.maos + "/" + q.total + " quadros · rosto em " + q.rosto + "/" + q.total + " · ombros em " + q.ombros + "/" + q.total + ".";
-    if (d.usa_rosto && q.rosto < q.total / 2) texto += " Rosto pouco detectado: coloque o rosto dentro da caixa tracejada.";
-    else if (q.maos < q.total / 3) texto += " Mãos pouco detectadas: mantenha as mãos visíveis.";
+    let texto = "Mãos em " + q.maos + "/" + q.total + " quadros · Rosto em " + q.rosto + "/" + q.total + " · Ombros em " + q.ombros + "/" + q.total + ".";
+    if (d.usa_rosto && q.rosto < q.total / 2) texto += " Rosto pouco detectado: ajuste o enquadramento.";
+    else if (q.maos < q.total / 3) texto += " Mãos pouco detectadas: mantenha-as visíveis.";
     return texto;
   }
 
   function mostrarPalavra(d, alvo) {
-    alvo.resultado.textContent = d.accepted ? nomeExibido(d.label) : "Não reconheci";
-    alvo.confianca.textContent = (d.accepted ? "confiança: " : "confiança baixa: ") + (d.confidence * 100).toFixed(0) + "%";
+    alvo.resultado.textContent = d.accepted ? nomeExibido(d.label) : "Não reconhecido";
+    alvo.confianca.textContent = (d.accepted ? "Confiança: " : "Confiança baixa: ") + (d.confidence * 100).toFixed(0) + "%";
     const melhores = (d.top3 || []).map((item) =>
       nomeExibido(item.label) + " (" + (item.confidence * 100).toFixed(1) + "%)"
     ).join(" · ");
@@ -611,6 +871,8 @@
     let estado = "repouso";
     let tAcima = null, tCand = null, ini = 0, ultimoMov = 0, bloqueioAte = 0;
     let candidata = null, travado = false;
+    let ultimoDet = 0;
+    let nQuadros = 0, nDet = 0, vMax = 0;
 
     function letra(f, vs) {
       if (!f.detected) { tCand = null; candidata = null; travado = false; return null; }
@@ -625,6 +887,7 @@
     }
 
     function passo(f) {
+      if (f.detected) ultimoDet = f.t;
       recentes.push(f.detected ? f.v : 0);
       if (recentes.length > 3) recentes.shift();
       const vs = recentes.reduce((a, b) => a + b, 0) / recentes.length;
@@ -636,13 +899,23 @@
           if (f.t - tAcima >= cfg.entradaMs) {
             estado = "sinal"; ini = tAcima; ultimoMov = f.t;
             tCand = null; candidata = null; travado = false;
+            nQuadros = 0; nDet = 0; vMax = 0;
           }
         } else tAcima = null;
         if (estado === "repouso" && comLetras) evento = letra(f, vs);
       } else {
+        nQuadros++;
+        if (f.detected) nDet++;
+        if (vs > vMax) vMax = vs;
         if (vs >= cfg.saida) ultimoMov = f.t;
-        if (f.t - ultimoMov >= cfg.fimMs || f.t - ini >= cfg.maxSinalMs) {
-          if (ultimoMov - ini >= cfg.minSinalMs) evento = { tipo: "sinal", ini: ini - cfg.margemMs, fim: ultimoMov + cfg.margemMs };
+        else if (!f.detected && f.t - ultimoDet < cfg.toleranciaMs) ultimoMov = f.t;
+        
+        const sumiu = !f.detected && f.t - ultimoDet >= cfg.toleranciaMs;
+        if (sumiu) ultimoMov = Math.max(ini, ultimoDet);
+        if (sumiu || f.t - ultimoMov >= cfg.fimMs || f.t - ini >= cfg.maxSinalMs) {
+          const stats = { durMs: Math.round(ultimoMov - ini), quadros: nQuadros, comMao: nDet, vMax: vMax };
+          if (ultimoMov - ini >= cfg.minSinalMs) evento = { tipo: "sinal", ini: ini - cfg.margemMs, fim: ultimoMov + cfg.margemMs, stats };
+          else evento = { tipo: "curto", stats };
           estado = "repouso"; tAcima = null; tCand = null; bloqueioAte = f.t + cfg.bloqueioMs;
           candidata = null; travado = false;
         }
@@ -672,28 +945,25 @@
     chipLstm.classList.toggle("ativo", sinal);
     chipCnn.classList.toggle("ativo", !sinal);
     medidorBarra.style.width = Math.min(100, (r.vs / (2 * SEG.entrada)) * 100) + "%";
-    rotaTexto.textContent = "Movimento do punho: " + r.vs.toFixed(2) + " (sinal acima de " + SEG.entrada + ", mão parada abaixo de " + SEG.saida + ")";
+    rotaTexto.textContent = "Movimento das Mãos: " + r.vs.toFixed(2) + " (Sinal > " + SEG.entrada + " | Parada < " + SEG.saida + ")";
     if (modo === "auto") mostrarLetra(sinal ? null : r.letra, sinal ? 0 : r.progresso);
     atualizarStatus(sinal);
   }
 
-  async function classificarSinal(quadros) {
+  async function classificarSinal(quadros, resumoSeg) {
     const t0 = performance.now();
-    mostrarFeedbackSinal("processando", "Sinal recebido! Estou reconhecendo... Não precisa repetir o movimento.");
+    mostrarFeedbackSinal("processando", "Sinal recebido! Analisando movimento...");
     const d = await post("/predict_palavra", { images: quadros });
     mostrarPalavra(d, { resultado: rotaPalavraEl, confianca: rotaConfEl, diag: rotaDiagEl });
     if (d.accepted) {
-      mostrarFeedbackSinal("sucesso", "Sinal reconhecido: " + nomeExibido(d.label) + ". Pode fazer o próximo sinal.");
+      mostrarFeedbackSinal("sucesso", "Sinal reconhecido: " + nomeExibido(d.label) + ".");
     } else {
-      mostrarFeedbackSinal("erro", "Terminei a análise, mas não reconheci o sinal. Ajuste a posição das mãos e tente novamente.");
+      mostrarFeedbackSinal("erro", "Não foi possível reconhecer o sinal. Tente novamente.");
     }
+    if (resumoSeg) rotaDiagEl.textContent += " Segmentação: " + resumoSeg + ".";
     const totalSeg = ((performance.now() - t0) / 1000).toFixed(1);
     const etapas = d.latency_stages_ms || {};
-    rotaDiagEl.textContent += " Análise total: " + totalSeg + " s (servidor: " +
-      (d.latency_ms || 0).toFixed(0) + " ms; mãos: " + (etapas.maos_media || 0).toFixed(0) +
-      " ms/quadro; rosto: " + (etapas.rosto_media || 0).toFixed(0) +
-      " ms/quadro; pose: " + (etapas.pose_media || 0).toFixed(0) +
-      " ms/quadro; modelo: " + (etapas.classificacao || 0).toFixed(0) + " ms).";
+    rotaDiagEl.textContent += " Tempo total: " + totalSeg + "s (servidor: " + (d.latency_ms || 0).toFixed(0) + "ms).";
     if (modo !== "estatico" && d.accepted) {
       if (frase && !frase.endsWith(" ")) adicionar(" ");
       adicionar(nomeExibido(d.label).toLowerCase() + " ");
@@ -702,15 +972,23 @@
 
   function tratarEvento(e) {
     if (e.tipo === "letra") { adicionar(e.label); return; }
+    const s = e.stats;
+    const resumoSeg = (s.durMs / 1000).toFixed(1) + " s, mão detectada em " + s.comMao + "/" + s.quadros +
+      " quadros, movimento máx " + s.vMax.toFixed(1);
+    if (DEBUG_SEG) console.log("[Libras] " + (e.tipo === "curto" ? "movimento CURTO ignorado: " : "sinal segmentado: ") + resumoSeg);
+    if (e.tipo === "curto") {
+      if (DEBUG_SEG) mostrarFeedbackSinal("", "Movimento muito rápido ignorado.");
+      return;
+    }
     const quadros = amostrar(janela.filter((f) => f.t >= e.ini && f.t <= e.fim).map((f) => f.img), FRAMES_SINAL);
     if (quadros.length < MIN_QUADROS_SINAL) return;
     naFila++;
     mostrarFeedbackSinal("processando", naFila > 1
-      ? "Sinal recebido! Há " + naFila + " sinais aguardando análise. Não precisa repetir."
-      : "Sinal recebido! Estou reconhecendo... Não precisa repetir o movimento.");
+      ? "Sinal recebido! Há " + naFila + " sinais na fila."
+      : "Sinal recebido! Analisando movimento...");
     fila = fila
-      .then(() => classificarSinal(quadros))
-      .catch((err) => { statusEl.textContent = "Erro: " + err.message; mostrarFeedbackSinal("erro", "Ocorreu um erro durante o reconhecimento. Tente novamente."); })
+      .then(() => classificarSinal(quadros, resumoSeg))
+      .catch((err) => { statusEl.textContent = "Erro: " + err.message; mostrarFeedbackSinal("erro", "Ocorreu um erro ao processar."); })
       .finally(() => { naFila--; });
   }
 
@@ -720,10 +998,13 @@
     if (!atual || !novos.length) return;
     const lote = novos.length > MAX_FRAMES_LOTE ? novos.slice(-MAX_FRAMES_LOTE) : novos;
     tEnviado = novos[novos.length - 1].t;
+    descartados += novos.length - lote.length;
     const t0 = performance.now();
-    const d = await post("/stream", { frames: lote.map((f) => ({ t: f.t, img: f.pequeno })), letras: modo === "auto", parado: SEG.saida });
+    const reset = resetPendente;
+    resetPendente = false;
+    const d = await post("/stream", { sid: SID, reset, frames: lote.map((f) => ({ t: f.t, img: f.pequeno })), letras: modo === "auto", parado: SEG.saida });
     if (seg !== atual) return;
-    latenciaEl.textContent = "Lote de " + lote.length + " quadros: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
+    latenciaEl.textContent = "Latência: " + Math.round(performance.now() - t0) + " ms (servidor: " + d.latency_ms + " ms)";
     let r = null;
     for (const f of d.frames) {
       r = atual.passo(f);
@@ -735,7 +1016,7 @@
   setInterval(() => {
     if (modo !== "estatico" && video.readyState >= 2 && !video.paused) {
       const t = performance.now();
-      janela.push({ t, img: frameBase64(480, 0.72), pequeno: frameBase64(LARGURA_STREAM, 0.62) });
+      janela.push({ t, img: frameBase64(0, 0.72, true), pequeno: frameBase64(larguraStream(), 0.7, true) });
       while (janela.length && t - janela[0].t > BUFFER_MS) janela.shift();
     }
   }, INTERVALO_MS);
@@ -755,13 +1036,14 @@
     detectorEl.hidden = palavras;
     candidata = null; contagem = 0; travado = false;
     seg = estatico ? null : criarSegmentador(SEG, auto);
-    janela = []; tEnviado = 0;
+    janela = []; tEnviado = 0; resetPendente = true;
     mostrarLetra(null, 0);
     mostrarMao(false);
     medidorBarra.style.width = "0";
-    rotaTexto.textContent = "Movimento do punho: -";
+    rotaTexto.textContent = "Movimento das Mãos: -";
     rotaPalavraEl.textContent = rotaConfEl.textContent = rotaDiagEl.textContent = "";
     feedbackSinalEl.hidden = true;
+    atualizarGuia();
     if (estatico) statusEl.textContent = "Mostre uma letra do alfabeto.";
     else atualizarStatus(false);
   }
@@ -781,7 +1063,9 @@
             await passoFluxo();
           }
         } catch (e) {
-          statusEl.textContent = e.message;
+          statusEl.textContent = e instanceof TypeError
+            ? "Sem conexão com o servidor. Verifique sua conexão."
+            : e.message;
           await dormir(1000);
         }
       }
@@ -798,6 +1082,7 @@
   if (!("speechSynthesis" in window)) falarBtn.disabled = true;
 
   document.addEventListener("keydown", (e) => {
+    if (!document.getElementById("escolha").hidden) return;
     if (document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "INPUT") return;
     if (e.key === " ") { e.preventDefault(); adicionar(" "); }
     if (e.key === "Backspace") { e.preventDefault(); apagar(); }
@@ -808,11 +1093,76 @@
   modoPalavrasBtn.addEventListener("click", () => trocarModo("palavras"));
   modoAutoBtn.addEventListener("click", () => trocarModo("auto"));
 
-  renderFrase();
-  iniciarCamera().then(() => {
-    trocarModo("auto");
-    loop();
+  btnCamera.addEventListener("click", async () => {
+    facing = facing === "user" ? "environment" : "user";
+    await iniciarCamera();
+    trocarModo(modo);
   });
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+  }
+  let eventoInstalar = null;
+  const btnInstalar = document.getElementById("btn-instalar");
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    eventoInstalar = e;
+    btnInstalar.hidden = false;
+  });
+  btnInstalar.addEventListener("click", async () => {
+    if (!eventoInstalar) return;
+    eventoInstalar.prompt();
+    await eventoInstalar.userChoice;
+    eventoInstalar = null;
+    btnInstalar.hidden = true;
+  });
+  window.addEventListener("appinstalled", () => { btnInstalar.hidden = true; });
+  const ehIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const jaInstalado = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  if (ehIOS && !jaInstalado) document.getElementById("dica-ios").hidden = false;
+
+  // ---- Tela Inicial: Seleção de Aparelho ----
+  const escolhaEl = document.getElementById("escolha");
+  let appIniciado = false;
+
+  function dispositivoLembrado() {
+    try { return localStorage.getItem("libras_dispositivo"); } catch (e) { return null; }
+  }
+
+  function mostrarEscolha() {
+    const sugerido = dispositivoLembrado() || (MOVEL ? "celular" : "computador");
+    for (const tipo of ["computador", "celular"]) {
+      const botao = document.getElementById("opcao-" + tipo);
+      botao.classList.toggle("sugerida", tipo === sugerido);
+      botao.querySelector(".selo").hidden = tipo !== sugerido;
+    }
+    escolhaEl.hidden = false;
+  }
+
+  function escolherDispositivo(tipo) {
+    document.body.classList.remove("celular", "computador");
+    document.body.classList.add(tipo);
+    try { localStorage.setItem("libras_dispositivo", tipo); } catch (e) { }
+    escolhaEl.hidden = true;
+    window.scrollTo(0, 0);
+    if (!appIniciado) {
+      appIniciado = true;
+      iniciarCamera().then(() => {
+        trocarModo("auto");
+        loop();
+      });
+    } else {
+      atualizarGuia();
+      trocarModo(modo);
+    }
+  }
+
+  document.getElementById("opcao-computador").addEventListener("click", () => escolherDispositivo("computador"));
+  document.getElementById("opcao-celular").addEventListener("click", () => escolherDispositivo("celular"));
+  document.getElementById("btn-trocar-versao").addEventListener("click", mostrarEscolha);
+
+  renderFrase();
+  mostrarEscolha();
 </script>
 </body>
 </html>

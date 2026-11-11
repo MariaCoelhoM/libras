@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import tensorflow as tf
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 try:
     from frases import montar_frase
@@ -139,6 +139,26 @@ print(f"Classes (estatico): {LABELS}")
 print("Carregando o HandLandmarker (estatico)...")
 detector = create_detector(HAND_MODEL_PATH)
 
+# Detector do /stream (segmentacao de sinais): 2 maos e confianca 0.3, igual ao
+# detector de video usado na classificacao. O /predict (alfabeto) continua
+# com o detector acima.
+detector_stream = create_detector(HAND_MODEL_PATH, num_hands=2, min_conf=0.3)
+
+# O MediaPipe nao e thread-safe: o Flask atende requisicoes em threads.
+LOCK_DETECTOR_STREAM = threading.Lock()
+
+# Ultimo estado de movimento por sessao do navegador: sid -> (t_ms, [punhos_xy]).
+ESTADO_STREAM = {}
+LOCK_ESTADO_STREAM = threading.Lock()
+LIMITE_SESSOES_STREAM = 50
+
+# Uma mao so e pareada com a mesma mao do quadro anterior se o punho se moveu
+# menos que SALTO_MAXIMO tamanhos de mao (acima disso, e outra mao).
+SALTO_MAXIMO = 4.0
+
+# Menor tamanho de mao (fracao da imagem) usado para normalizar a velocidade.
+TAMANHO_MIN_MAO = 0.12
+
 
 # ---------------- Dinâmico (Palavras em Libras) ----------------
 
@@ -259,7 +279,6 @@ pose_detector_dinamico = (
 
 ultimo_ts = 0
 ultimo_punho = None
-ultimo_punho_stream = None
 
 
 # ---------------- Funções auxiliares ----------------
@@ -288,6 +307,41 @@ def detectar_mao(frame_bgr):
         detector,
         mp_image
     )
+
+
+def detectar_maos(frame_bgr):
+    """Todas as maos do quadro (ate 2): lista de (landmarks, punho_xy, tamanho).
+
+    tamanho = maior distancia do punho a um ponto da mao, em coordenadas da
+    imagem. Serve para medir a velocidade em "tamanhos de mao por segundo",
+    que nao depende de a pessoa estar perto ou longe da camera.
+    """
+    if frame_bgr is None:
+        return []
+
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+
+    with LOCK_DETECTOR_STREAM:
+        resultado = detector_stream.detect(mp_image)
+
+    maos = []
+
+    for hand in resultado.hand_landmarks:
+        pts = np.array(
+            [[lm.x, lm.y, lm.z] for lm in hand],
+            dtype=np.float32
+        )
+        punho = pts[0, :2].copy()
+        # Piso no tamanho: mao fechada (punho) parece pequena e, sem o piso,
+        # qualquer tremor viraria "movimento" e o sinal comecaria cedo demais.
+        tamanho = max(
+            float(np.linalg.norm(pts[:, :2] - punho, axis=1).max()),
+            TAMANHO_MIN_MAO
+        )
+        maos.append((pts, punho, tamanho))
+
+    return maos
 
 
 def classificar_letra(landmarks):
@@ -355,6 +409,32 @@ def classificar_palavra(X_hands, X_face, X_traj):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+# ---------------- PWA (instalar no celular) ----------------
+
+@app.route("/manifest.webmanifest")
+def manifest():
+    return send_from_directory(
+        app.static_folder,
+        "manifest.webmanifest",
+        mimetype="application/manifest+json"
+    )
+
+
+@app.route("/sw.js")
+def service_worker():
+    # O service worker precisa ser servido da raiz para controlar o site todo.
+    resposta = send_from_directory(
+        app.static_folder,
+        "sw.js",
+        mimetype="application/javascript"
+    )
+
+    resposta.headers["Cache-Control"] = "no-cache"
+    resposta.headers["Service-Worker-Allowed"] = "/"
+
+    return resposta
 
 
 @app.route("/predict", methods=["POST"])
@@ -444,10 +524,32 @@ def predict_auto():
     return jsonify(resposta)
 
 
+def velocidade_maos(atuais, anteriores, dt):
+    """Maior velocidade entre as maos, em tamanhos de mao por segundo.
+
+    Cada mao atual e pareada com o punho anterior mais proximo; pares com um
+    salto grande (outra mao que apareceu) sao ignorados.
+    """
+    if not anteriores or not (0 < dt <= 1.0):
+        return 0.0
+
+    melhor = 0.0
+
+    for punho, tamanho in atuais:
+        distancia = min(
+            float(np.linalg.norm(punho - ant)) for ant in anteriores
+        )
+
+        if distancia > SALTO_MAXIMO * tamanho:
+            continue
+
+        melhor = max(melhor, distancia / dt / tamanho)
+
+    return melhor
+
+
 @app.route("/stream", methods=["POST"])
 def stream():
-    global ultimo_punho_stream
-
     inicio = time.perf_counter()
 
     dados = request.get_json()
@@ -455,48 +557,49 @@ def stream():
     frames = dados["frames"]
     letras = dados.get("letras", False)
     parado = dados.get("parado", LIMIAR_MOVIMENTO)
+    sid = str(dados.get("sid", "default"))
+
+    # O estado de movimento e por sessao do navegador (antes era global).
+    with LOCK_ESTADO_STREAM:
+        if dados.get("reset"):
+            ESTADO_STREAM.pop(sid, None)
+
+        estado = ESTADO_STREAM.get(sid)
 
     saida = []
 
     for i, f in enumerate(frames):
 
-        landmarks = detectar_mao(
+        maos = detectar_maos(
             decodificar(f["img"])
         )
 
         item = {
             "t": f["t"],
-            "detected": landmarks is not None,
+            "detected": bool(maos),
             "v": 0.0
         }
 
-        if landmarks is None:
-            ultimo_punho_stream = None
+        if not maos:
+            estado = None
 
         else:
-            punho = np.asarray(
-                landmarks,
-                dtype=np.float32
-            ).reshape(-1, 3)[0][:2]
+            atuais = [(punho, tamanho) for _, punho, tamanho in maos]
 
-            if ultimo_punho_stream is not None:
-                t_ant, p_ant = ultimo_punho_stream
-
+            if estado is not None:
+                t_ant, anteriores = estado
                 dt = (f["t"] - t_ant) / 1000
+                item["v"] = velocidade_maos(atuais, anteriores, dt)
 
-                if 0 < dt <= 1.0:
-                    item["v"] = float(
-                        np.linalg.norm(punho - p_ant) / dt
-                    )
-
-            ultimo_punho_stream = (f["t"], punho)
+            estado = (f["t"], [punho for punho, _ in atuais])
 
             if (
                 letras
                 and i == len(frames) - 1
                 and item["v"] < parado
             ):
-                label, confianca = classificar_letra(landmarks)
+                # Letra: usa a primeira mao detectada, como antes.
+                label, confianca = classificar_letra(maos[0][0])
 
                 item.update({
                     "label": label,
@@ -505,6 +608,16 @@ def stream():
                 })
 
         saida.append(item)
+
+    with LOCK_ESTADO_STREAM:
+        if estado is None:
+            ESTADO_STREAM.pop(sid, None)
+        else:
+            ESTADO_STREAM[sid] = estado
+
+        # Limita a memoria: descarta a sessao mais antiga.
+        while len(ESTADO_STREAM) > LIMITE_SESSOES_STREAM:
+            ESTADO_STREAM.pop(next(iter(ESTADO_STREAM)), None)
 
     return jsonify({
         "frames": saida,
@@ -711,6 +824,13 @@ def predict_palavra():
         trajs,
         dtype=np.float32
     )[None]
+
+    print(
+        f"[palavra] {len(imagens)} quadros recebidos, {len(frames)} analisados | "
+        f"maos {com_mao} rosto {com_rosto} ombros {com_ombros} | "
+        f"{np.mean(tempos_mao):.0f} ms/quadro (mao), "
+        f"{np.mean(tempos_rosto):.0f} ms/quadro (rosto)"
+    )
 
     inicio_clf = time.perf_counter()
 
@@ -939,8 +1059,13 @@ def latencia():
 
 if __name__ == "__main__":
 
+    # O celular so libera a camera em HTTPS. No Codespaces (porta publica) e em
+    # hospedagens, o HTTPS ja vem do proxy. Em Wi-Fi local, rode com
+    # LIBRAS_HTTPS=1 (precisa de: pip install cryptography) e aceite o aviso
+    # de certificado no navegador do celular.
     app.run(
         host="0.0.0.0",
-        port=5000,
-        debug=False
+        port=int(os.environ.get("PORT", 5000)),
+        debug=False,
+        ssl_context="adhoc" if os.environ.get("LIBRAS_HTTPS") else None
     )
