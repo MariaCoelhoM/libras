@@ -1,0 +1,175 @@
+{
+  "experimento": "modelo_alfabeto",
+  "resumo": {
+    "n_dobras": 1,
+    "n_sementes": 3,
+    "acuracia": {
+      "media": 0.9990937262468572,
+      "desvio_entre_dobras": null,
+      "desvio_entre_sementes": 0.00033204165034205683
+    },
+    "f1_macro": {
+      "media": 0.9990825951990292,
+      "desvio_entre_dobras": null,
+      "desvio_entre_sementes": 0.00032500451101595735
+    }
+  },
+  "por_rodada": [
+    {
+      "dobra": 0,
+      "semente": 0,
+      "n_teste": 11402,
+      "acuracia": 0.9994737765304332,
+      "f1_macro": 0.9994535385579348,
+      "epocas_treinadas": 14,
+      "n_treino": 29141
+    },
+    {
+      "dobra": 0,
+      "semente": 1,
+      "n_teste": 11402,
+      "acuracia": 0.9988598491492721,
+      "f1_macro": 0.9988478416715633,
+      "epocas_treinadas": 10,
+      "n_treino": 29141
+    },
+    {
+      "dobra": 0,
+      "semente": 2,
+      "n_teste": 11402,
+      "acuracia": 0.9989475530608665,
+      "f1_macro": 0.9989464053675896,
+      "epocas_treinadas": 11,
+      "n_treino": 29141
+    }
+  ],
+  "por_classe": {
+    "A": {
+      "precisao": 1.0,
+      "revocacao": 0.9975262832405689,
+      "f1": 0.9987616099071207,
+      "suporte": 1617
+    },
+    "B": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1686
+    },
+    "C": {
+      "precisao": 0.9987317691819911,
+      "revocacao": 0.9943181818181818,
+      "f1": 0.9965200885795634,
+      "suporte": 1584
+    },
+    "D": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    },
+    "E": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1722
+    },
+    "F": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1350
+    },
+    "G": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    },
+    "I": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    },
+    "L": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    },
+    "M": {
+      "precisao": 0.9933774834437086,
+      "revocacao": 1.0,
+      "f1": 0.9966777408637874,
+      "suporte": 1650
+    },
+    "N": {
+      "precisao": 1.0,
+      "revocacao": 0.9933333333333333,
+      "f1": 0.9966555183946488,
+      "suporte": 1650
+    },
+    "O": {
+      "precisao": 0.9959973315543695,
+      "revocacao": 0.9973279893119572,
+      "f1": 0.9966622162883845,
+      "suporte": 1497
+    },
+    "P": {
+      "precisao": 0.9951749095295537,
+      "revocacao": 1.0,
+      "f1": 0.9975816203143894,
+      "suporte": 1650
+    },
+    "Q": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    },
+    "R": {
+      "precisao": 0.9981851179673321,
+      "revocacao": 1.0,
+      "f1": 0.9990917347865577,
+      "suporte": 1650
+    },
+    "S": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    },
+    "T": {
+      "precisao": 0.9993943064809206,
+      "revocacao": 1.0,
+      "f1": 0.9996970614965162,
+      "suporte": 1650
+    },
+    "U": {
+      "precisao": 1.0,
+      "revocacao": 0.9981818181818182,
+      "f1": 0.9990900818926297,
+      "suporte": 1650
+    },
+    "V": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    },
+    "W": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    },
+    "Y": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 1650
+    }
+  },
+  "observacao": "por_classe e as matrizes somam todas as rodadas (dobras x sementes)."
+}

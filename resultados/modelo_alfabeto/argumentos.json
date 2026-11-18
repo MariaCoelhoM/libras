@@ -1,0 +1,27 @@
+{
+  "argumentos": {
+    "data": "landmarks.npz",
+    "experiment": null,
+    "results_dir": "resultados",
+    "output": "modelo_alfabeto.keras",
+    "epochs": 50,
+    "batch_size": 32,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "deterministic": false,
+    "val_split": 0.15,
+    "classes": null,
+    "counts_output": null,
+    "divisao": "original train/test do dataset"
+  },
+  "versoes": {
+    "python": "3.11.17",
+    "numpy": "2.4.6",
+    "scikit-learn": "1.9.1",
+    "tensorflow": "2.21.0"
+  },
+  "gerado_em": "2026-11-18T04:39:50"
+}

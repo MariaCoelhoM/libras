@@ -198,10 +198,10 @@ def load_sequence_features(data_path, config):
         effective["use_face"] = False
     if effective["use_face"] and effective["face_norm"] and face_norm is None:
         raise KeyError(f"{data_path} nao tem 'X_face_norm' (face normalizada). "
-                       "Re-extraia com a versao atual de extract_landmarks_video_hands_face_minds_libras.py.")
+                       "Re-extraia com a versao atual de extract_landmarks_minds_libras.py.")
     if needs_pose(effective) and traj is None:
         raise KeyError(f"{data_path} nao tem 'X_traj' (trajetoria). "
-                       "Re-extraia com --trajectory em extract_landmarks_video_hands_face_minds_libras.py.")
+                       "Re-extraia com a versao atual de extract_landmarks_minds_libras.py.")
 
     X = assemble_features(hands, face, face_norm, traj, effective)
     print(f"Representacao: {effective} -> {X.shape[-1]} features por frame")

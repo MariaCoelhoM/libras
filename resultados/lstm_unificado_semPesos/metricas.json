@@ -1,15 +1,15 @@
 {
-  "experimento": "lstm_unificado",
+  "experimento": "lstm_unificado_semPesos",
   "resumo": {
     "n_dobras": 1,
     "n_sementes": 1,
     "acuracia": {
-      "media": 0.5787234042553191,
+      "media": 0.6,
       "desvio_entre_dobras": null,
       "desvio_entre_sementes": null
     },
     "f1_macro": {
-      "media": 0.5717286628524895,
+      "media": 0.5540211077637979,
       "desvio_entre_dobras": null,
       "desvio_entre_sementes": null
     }
@@ -19,19 +19,19 @@
       "dobra": 0,
       "semente": 42,
       "n_teste": 235,
-      "acuracia": 0.5787234042553191,
-      "f1_macro": 0.5717286628524895,
+      "acuracia": 0.6,
+      "f1_macro": 0.5540211077637979,
       "n_treino": 476,
       "n_validacao": 227,
-      "acuracia_keras": 0.5787234306335449,
-      "epocas_treinadas": 19
+      "acuracia_keras": 0.6000000238418579,
+      "epocas_treinadas": 16
     }
   ],
   "por_classe": {
     "Acontecer": {
-      "precisao": 0.5,
-      "revocacao": 0.1,
-      "f1": 0.16666666666666666,
+      "precisao": 0.0,
+      "revocacao": 0.0,
+      "f1": 0.0,
       "suporte": 10
     },
     "Aluno": {
@@ -41,9 +41,9 @@
       "suporte": 10
     },
     "Amarelo": {
-      "precisao": 1.0,
-      "revocacao": 0.6,
-      "f1": 0.75,
+      "precisao": 0.0,
+      "revocacao": 0.0,
+      "f1": 0.0,
       "suporte": 10
     },
     "America": {
@@ -53,15 +53,15 @@
       "suporte": 10
     },
     "Aproveitar": {
-      "precisao": 0.45454545454545453,
-      "revocacao": 0.5,
-      "f1": 0.47619047619047616,
+      "precisao": 0.6666666666666666,
+      "revocacao": 0.8,
+      "f1": 0.7272727272727273,
       "suporte": 10
     },
     "Bala": {
-      "precisao": 1.0,
-      "revocacao": 0.2,
-      "f1": 0.3333333333333333,
+      "precisao": 0.6666666666666666,
+      "revocacao": 0.4,
+      "f1": 0.5,
       "suporte": 10
     },
     "Banco": {
@@ -71,81 +71,81 @@
       "suporte": 10
     },
     "Banheiro": {
-      "precisao": 0.3333333333333333,
-      "revocacao": 0.2,
-      "f1": 0.25,
-      "suporte": 10
-    },
-    "Barulho": {
-      "precisao": 0.6,
-      "revocacao": 0.6,
-      "f1": 0.6,
-      "suporte": 10
-    },
-    "Cinco": {
-      "precisao": 0.35294117647058826,
-      "revocacao": 0.6,
-      "f1": 0.4444444444444444,
-      "suporte": 10
-    },
-    "Compreender": {
-      "precisao": 1.0,
-      "revocacao": 0.8,
-      "f1": 0.8888888888888888,
-      "suporte": 5
-    },
-    "Conhecer": {
-      "precisao": 0.7,
-      "revocacao": 0.7,
-      "f1": 0.7,
-      "suporte": 10
-    },
-    "Desculpa": {
-      "precisao": 0.45454545454545453,
-      "revocacao": 1.0,
-      "f1": 0.625,
-      "suporte": 5
-    },
-    "Espelho": {
-      "precisao": 1.0,
-      "revocacao": 0.6,
-      "f1": 0.75,
-      "suporte": 10
-    },
-    "Esquina": {
-      "precisao": 0.8333333333333334,
-      "revocacao": 1.0,
-      "f1": 0.9090909090909091,
-      "suporte": 10
-    },
-    "Filho": {
-      "precisao": 0.5,
-      "revocacao": 0.5,
-      "f1": 0.5,
-      "suporte": 10
-    },
-    "Maca": {
-      "precisao": 0.4444444444444444,
-      "revocacao": 0.4,
-      "f1": 0.42105263157894735,
-      "suporte": 10
-    },
-    "Medo": {
-      "precisao": 0.6,
-      "revocacao": 0.6,
-      "f1": 0.6,
-      "suporte": 10
-    },
-    "Não": {
       "precisao": 0.5,
       "revocacao": 0.2,
       "f1": 0.2857142857142857,
+      "suporte": 10
+    },
+    "Barulho": {
+      "precisao": 1.0,
+      "revocacao": 0.5,
+      "f1": 0.6666666666666666,
+      "suporte": 10
+    },
+    "Cinco": {
+      "precisao": 0.4375,
+      "revocacao": 0.7,
+      "f1": 0.5384615384615384,
+      "suporte": 10
+    },
+    "Compreender": {
+      "precisao": 0.3333333333333333,
+      "revocacao": 0.4,
+      "f1": 0.36363636363636365,
+      "suporte": 5
+    },
+    "Conhecer": {
+      "precisao": 0.5384615384615384,
+      "revocacao": 0.7,
+      "f1": 0.6086956521739131,
+      "suporte": 10
+    },
+    "Desculpa": {
+      "precisao": 0.2,
+      "revocacao": 0.8,
+      "f1": 0.32,
+      "suporte": 5
+    },
+    "Espelho": {
+      "precisao": 0.8333333333333334,
+      "revocacao": 0.5,
+      "f1": 0.625,
+      "suporte": 10
+    },
+    "Esquina": {
+      "precisao": 0.8181818181818182,
+      "revocacao": 0.9,
+      "f1": 0.8571428571428571,
+      "suporte": 10
+    },
+    "Filho": {
+      "precisao": 0.625,
+      "revocacao": 0.5,
+      "f1": 0.5555555555555556,
+      "suporte": 10
+    },
+    "Maca": {
+      "precisao": 0.6923076923076923,
+      "revocacao": 0.9,
+      "f1": 0.782608695652174,
+      "suporte": 10
+    },
+    "Medo": {
+      "precisao": 0.8,
+      "revocacao": 0.4,
+      "f1": 0.5333333333333333,
+      "suporte": 10
+    },
+    "Não": {
+      "precisao": 0.0,
+      "revocacao": 0.0,
+      "f1": 0.0,
       "suporte": 5
     },
     "Onde": {
-      "precisao": 0.16666666666666666,
+      "precisao": 0.25,
       "revocacao": 0.8,
-      "f1": 0.27586206896551724,
+      "f1": 0.38095238095238093,
       "suporte": 5
     },
     "Por favor": {
@@ -155,39 +155,39 @@
       "suporte": 5
     },
     "Ruim": {
-      "precisao": 0.9,
-      "revocacao": 0.9,
-      "f1": 0.9,
+      "precisao": 0.9090909090909091,
+      "revocacao": 1.0,
+      "f1": 0.9523809523809523,
       "suporte": 10
     },
     "Sapo": {
       "precisao": 1.0,
-      "revocacao": 0.3,
-      "f1": 0.46153846153846156,
+      "revocacao": 0.4,
+      "f1": 0.5714285714285714,
       "suporte": 10
     },
     "Sim": {
-      "precisao": 0.4,
-      "revocacao": 0.4,
-      "f1": 0.4,
+      "precisao": 0.45454545454545453,
+      "revocacao": 1.0,
+      "f1": 0.625,
       "suporte": 5
     },
     "Surdo": {
-      "precisao": 0.26666666666666666,
-      "revocacao": 0.8,
-      "f1": 0.4,
+      "precisao": 0.375,
+      "revocacao": 0.6,
+      "f1": 0.46153846153846156,
       "suporte": 5
     },
     "Vacina": {
-      "precisao": 1.0,
-      "revocacao": 0.5,
-      "f1": 0.6666666666666666,
+      "precisao": 0.9090909090909091,
+      "revocacao": 1.0,
+      "f1": 0.9523809523809523,
       "suporte": 10
     },
     "Vontade": {
-      "precisao": 1.0,
-      "revocacao": 0.7,
-      "f1": 0.8235294117647058,
+      "precisao": 0.8888888888888888,
+      "revocacao": 0.8,
+      "f1": 0.8421052631578947,
       "suporte": 10
     }
   },

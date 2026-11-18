@@ -52,6 +52,8 @@ def parse_args():
                    help="Quadros por sinal (o app.py usa 30)")
     p.add_argument("--epochs", type=int, default=40,
                    help="Maximo de epocas (o EarlyStopping pode parar antes)")
+    p.add_argument("--class_weight", choices=["balanced", "none"], default="balanced",
+                   help="balanced = pesa mais as classes com menos amostras; none = sem pesos")
     p.add_argument("--patience", type=int, default=10,
                    help="EarlyStopping: epocas sem melhora do val_loss antes de parar "
                         "(0 desliga e treina todas as epocas)")
@@ -314,10 +316,14 @@ def main():
     print(f"Treino apos augmentation: {len(X_treino)} amostras")
 
     # As bases tem tamanhos diferentes: os pesos evitam que a maior domine.
-    pesos = compute_class_weight(
-        "balanced", classes=np.unique(y_treino), y=y_treino
-    )
-    class_weight = {int(c): float(w) for c, w in zip(np.unique(y_treino), pesos)}
+    # (--class_weight none desliga, para testar se os pesos favorecem demais as classes pequenas)
+    if args.class_weight == "balanced":
+        pesos = compute_class_weight(
+            "balanced", classes=np.unique(y_treino), y=y_treino
+        )
+        class_weight = {int(c): float(w) for c, w in zip(np.unique(y_treino), pesos)}
+    else:
+        class_weight = None
 
     model = Sequential([
         Masking(mask_value=0.0, input_shape=(X.shape[1], X.shape[2])),
@@ -368,6 +374,7 @@ def main():
         f"Acuracia no teste (geral): {acc:.4f}",
         f"Divisao por sinalizador | teste: {sorted(grupos_teste)}",
         resumo_epocas,
+        f"Pesos de classe: {args.class_weight}",
     ]
 
     origem_teste = unido["origem"][idx_teste]

@@ -1,0 +1,48 @@
+real,previsto,contagem,fracao_da_classe_real
+Acontecer,Onde,7,0.7000
+Amarelo,Conhecer,6,0.6000
+Bala,Cinco,5,0.5000
+Banheiro,Aluno,5,0.5000
+Barulho,Surdo,5,0.5000
+Medo,Maca,4,0.4000
+Acontecer,Por favor,3,0.3000
+America,Sim,3,0.3000
+Cinco,Desculpa,3,0.3000
+Espelho,Cinco,3,0.3000
+Aluno,Filho,2,0.2000
+Amarelo,Bala,2,0.2000
+Amarelo,Compreender,2,0.2000
+Aproveitar,Onde,2,0.2000
+Compreender,Desculpa,2,0.4000
+Espelho,Desculpa,2,0.2000
+Filho,Aproveitar,2,0.2000
+Não,Desculpa,2,0.4000
+Não,Sim,2,0.4000
+Sapo,Banheiro,2,0.2000
+Sapo,Esquina,2,0.2000
+Surdo,Desculpa,2,0.4000
+Vontade,Desculpa,2,0.2000
+Aluno,Ruim,1,0.1000
+America,Compreender,1,0.1000
+America,Por favor,1,0.1000
+Bala,Desculpa,1,0.1000
+Banheiro,Acontecer,1,0.1000
+Banheiro,Aproveitar,1,0.1000
+Banheiro,Onde,1,0.1000
+Compreender,Por favor,1,0.2000
+Conhecer,Cinco,1,0.1000
+Conhecer,Desculpa,1,0.1000
+Conhecer,Espelho,1,0.1000
+Desculpa,Vontade,1,0.2000
+Esquina,Sim,1,0.1000
+Filho,Medo,1,0.1000
+Filho,Não,1,0.1000
+Filho,Onde,1,0.1000
+Maca,Aproveitar,1,0.1000
+Medo,Filho,1,0.1000
+Medo,Vacina,1,0.1000
+Não,Compreender,1,0.2000
+Onde,Por favor,1,0.2000
+Por favor,Desculpa,1,0.2000
+Sapo,Aluno,1,0.1000
+Sapo,Onde,1,0.1000
