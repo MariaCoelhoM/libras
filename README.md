@@ -199,6 +199,14 @@ Com `--output /tmp/...`, o modelo e seus arquivos (`_labels.json`, `_config.json
 `_split.npz`) ficam em `/tmp`; os resultados versionaveis vao para
 `resultados/lstm_unificado_semPesos/`. A divisao depende so de `--seed` e
 `--test_size`, entao o teste e o mesmo do treino com pesos.
+O modelo versionado (`modelo_libras_unificado.keras`, usado pela demo) e o treinado
+com pesos (padrao). `resultados/lstm_unificado/` guarda os resultados dele e
+`resultados/lstm_unificado_semPesos/` guarda o experimento de comparacao. A matriz
+de confusao do modelo sem pesos (o `.keras` fica em `/tmp`) e gerada assim:
+```bash
+python matriz.py --model /tmp/lstm_sem_pesos.keras --data landmarks_unificado.npz \
+  --normalize --output resultados/lstm_unificado_semPesos/matriz_confusao_teste.png
+```
 Baseline (Random Forest ou k-NN) com a mesma representacao e EXATAMENTE o mesmo
 teste da LSTM (nao use `--split` junto com `--classes`):
 ```bash
