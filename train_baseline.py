@@ -2,9 +2,11 @@
 
 Usa os MESMOS vetores dos modelos neurais, so que achatados, e a mesma divisao:
   - .npz de video (X_hands, X_face_norm, X_traj, ...): sequencia (T x features)
-    achatada em um vetor so. Divisao estratificada (test_size/seed iguais aos do
-    treino da LSTM: 0.375 e 42) ou, se pedir --by_signer e o .npz tiver 'paths',
-    por sinalizador.
+    achatada em um vetor so. Com --split <modelo>_split.npz (gerado pelo
+    train_lstm.py) usa EXATAMENTE o mesmo teste da LSTM, dividido por sinalizador
+    (treino do baseline = treino + validacao da LSTM). Sem --split, cai na divisao
+    estratificada por amostra (ou por sinalizador com --by_signer, so MINDS), que NAO
+    e comparavel com a LSTM.
   - .npz de alfabeto (chaves X e y): vetor de 21 x 3 = 63 valores; usa a divisao
     train/test do .npz se ela existir, senao uma divisao estratificada.
 
@@ -13,7 +15,8 @@ MAIS dados que os modelos neurais. Isso favorece o baseline: se a CNN/LSTM ainda
 ganhar, o ganho nao e artefato.
 
 Exemplos:
-    python train_baseline.py --data landmarks_unificado.npz --config modelo_libras_unificado_config.json
+    python train_baseline.py --data landmarks_unificado.npz \\
+        --config modelo_libras_unificado_config.json --split modelo_libras_unificado_split.npz
     python train_baseline.py --data landmarks_minds_libras_trimmed_interpolated.npz --face_norm --trajectory --model knn
 """
 import argparse
@@ -89,6 +92,15 @@ def signer_ids_from_paths(paths, regex):
 
 def make_splits(y, args, signer_ids=None, static_split=None):
     idx = np.arange(len(y))
+    if args.split:
+        s = np.load(args.split, allow_pickle=True)
+        if int(s["n_amostras"]) != len(y):
+            raise SystemExit(f"O {args.split} e de {int(s['n_amostras'])} amostras e este .npz tem "
+                             f"{len(y)} (nao use --split junto com --classes, e use o mesmo .npz do treino).")
+        train = np.concatenate([s["idx_treino"], s["idx_val"]])
+        test = s["idx_teste"]
+        print(f"Divisao do treino da LSTM ({args.split}): {len(train)} treino / {len(test)} teste.")
+        return [(train, test)]
     if static_split is not None:
         names = np.array([str(s).lower() for s in static_split])
         train, test = idx[names == "train"], idx[names == "test"]
@@ -123,8 +135,9 @@ def main():
     parser.add_argument("--n_estimators", type=int, default=300, help="Arvores do Random Forest")
     parser.add_argument("--k", type=int, default=5, help="Vizinhos do k-NN")
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2], help="Sementes (so o Random Forest usa; o k-NN e deterministico)")
-    parser.add_argument("--test_size", type=float, default=0.375, help="Mesmo valor do treino da LSTM")
-    parser.add_argument("--split_seed", type=int, default=42, help="Mesmo random_state do treino da LSTM")
+    parser.add_argument("--split", default=None, help="_split.npz do train_lstm.py: usa o MESMO teste da LSTM (por sinalizador)")
+    parser.add_argument("--test_size", type=float, default=0.375, help="So sem --split")
+    parser.add_argument("--split_seed", type=int, default=42, help="So sem --split")
     parser.add_argument("--folds", type=int, default=0, help="0 = divisao unica; K >= 2 = validacao cruzada")
     parser.add_argument("--by_signer", action="store_true", help="So video com 'paths': divide por sinalizador (GroupShuffleSplit/GroupKFold)")
     parser.add_argument("--signer_regex", default=r"Sinalizador(\d+)")
@@ -220,6 +233,9 @@ def main():
     out_path = os.path.join(args.results_dir, f"{experiment}.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump({"experimento": experiment, "argumentos": vars(args), "representacao": rep,
+                   "divisao": ("mesmo teste da LSTM, por sinalizador (--split)" if args.split
+                               else "por sinalizador (--by_signer)" if args.by_signer
+                               else "estratificada por amostra (NAO comparavel com a LSTM)"),
                    "classes": encoder.classes_.tolist(), "execucoes": runs,
                    "acuracia_media": float(accs.mean()), "acuracia_desvio": float(accs.std()),
                    "f1_macro_medio": float(f1s.mean()), "f1_macro_desvio": float(f1s.std())},

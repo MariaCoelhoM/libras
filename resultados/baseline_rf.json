@@ -12,6 +12,7 @@
       1,
       2
     ],
+    "split": "modelo_libras_unificado_split.npz",
     "test_size": 0.375,
     "split_seed": 42,
     "folds": 0,
@@ -28,6 +29,7 @@
     "face_norm": true,
     "trajectory": true
   },
+  "divisao": "mesmo teste da LSTM, por sinalizador (--split)",
   "classes": [
     "Acontecer",
     "Aluno",
@@ -61,36 +63,36 @@
     {
       "divisao": 1,
       "seed": 0,
-      "acuracia": 0.8920454545454546,
-      "f1_macro": 0.8376306768643283,
+      "acuracia": 0.8382978723404255,
+      "f1_macro": 0.8005238967227271,
       "acuracia_por_origem": {
-        "minds": 0.96,
-        "nucleo": 0.5
+        "minds": 0.89,
+        "nucleo": 0.5428571428571428
       }
     },
     {
       "divisao": 1,
       "seed": 1,
-      "acuracia": 0.9005681818181818,
-      "f1_macro": 0.8542619421049159,
+      "acuracia": 0.8382978723404255,
+      "f1_macro": 0.8023699297518614,
       "acuracia_por_origem": {
-        "minds": 0.9666666666666667,
-        "nucleo": 0.5192307692307693
+        "minds": 0.89,
+        "nucleo": 0.5428571428571428
       }
     },
     {
       "divisao": 1,
       "seed": 2,
-      "acuracia": 0.8835227272727273,
-      "f1_macro": 0.8237178393092373,
+      "acuracia": 0.825531914893617,
+      "f1_macro": 0.7734438771874645,
       "acuracia_por_origem": {
-        "minds": 0.9633333333333334,
-        "nucleo": 0.4230769230769231
+        "minds": 0.885,
+        "nucleo": 0.4857142857142857
       }
     }
   ],
-  "acuracia_media": 0.8920454545454545,
-  "acuracia_desvio": 0.006958777678361273,
-  "f1_macro_medio": 0.8385368194261605,
-  "f1_macro_desvio": 0.012486028849745593
+  "acuracia_media": 0.8340425531914893,
+  "acuracia_desvio": 0.006017930052651476,
+  "f1_macro_medio": 0.792112567887351,
+  "f1_macro_desvio": 0.013222253182222357
 }

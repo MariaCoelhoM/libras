@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Modelos do MediaPipe (baixados pelo README, nao versionar)
+*.task
+
+# Logs de extracao
+falhas_*.csv
+
+# Saidas temporarias
+matriz_confusao.png
+resultados_frases.csv
+resultados_bleu.json

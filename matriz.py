@@ -1,15 +1,15 @@
 """Matriz de confusao do modelo unificado de palavras (MINDS-Libras + V-Librasil).
 
 Le o landmarks_unificado.npz, monta as features exatamente como o treino
-(maos + rosto normalizado + trajetoria, conforme o _config.json do modelo),
-reproduz a divisao treino/teste (stratify + random_state) e avalia so o teste.
+(maos + rosto normalizado + trajetoria, conforme o _config.json do modelo) e
+avalia SO o teste, lendo os indices do <modelo>_split.npz que o train_lstm.py
+salva (divisao por sinalizador). Nao sorteia nada de novo.
 
 Uso:
     python matriz.py --model modelo_libras_unificado.keras --data landmarks_unificado.npz
 
-IMPORTANTE: o split so e igual ao do treino se o treino usou os mesmos valores de
---test_size/--seed (padrao do script de treino: 0.375 e 42). Confira: a acuracia
-impressa aqui deve bater com a "Acuracia no teste" do log do treino.
+Confira: a acuracia impressa aqui deve bater com a "Acuracia no teste" do log do
+treino. O _split.npz so vale para o .npz com que o modelo foi treinado.
 """
 import argparse
 import json
@@ -87,13 +87,12 @@ def main():
     parser = argparse.ArgumentParser(description="Matriz de confusao do modelo unificado no conjunto de teste.")
     parser.add_argument("--model", default="modelo_libras_unificado.keras")
     parser.add_argument("--data", default="landmarks_unificado.npz", help=".npz unificado usado no treino")
-    parser.add_argument("--test_size", type=float, default=0.375, help="Mesmo valor do treino")
-    parser.add_argument("--seed", type=int, default=42, help="Mesmo random_state do treino")
+    parser.add_argument("--split", default=None,
+                        help="_split.npz salvo pelo treino (padrao: <modelo>_split.npz)")
     parser.add_argument("--normalize", action="store_true", help="Matriz normalizada por linha (recomendado com classes desbalanceadas)")
-    parser.add_argument("--output", default="matriz_confusao.png")
+    parser.add_argument("--output", default="resultados/lstm_unificado/matriz_confusao_teste.png")
     args = parser.parse_args()
 
-    from sklearn.model_selection import train_test_split
     from sklearn.metrics import confusion_matrix
 
     base = os.path.splitext(args.model)[0]
@@ -113,9 +112,18 @@ def main():
                          f"(timesteps, n_features) segundo {config_path}.")
     print(f"Amostras: {len(X)} | features por frame: {X.shape[-1]} | classes: {len(labels)}")
 
-    # Mesma divisao do treino: stratify=y, random_state fixo
-    _, test_idx = train_test_split(np.arange(len(X)), test_size=args.test_size,
-                                   random_state=args.seed, stratify=y)
+    # Mesma divisao do treino: indices salvos pelo train_lstm.py (por sinalizador)
+    split_path = args.split or base + "_split.npz"
+    if not os.path.exists(split_path):
+        raise SystemExit(f"Nao achei {split_path}. Rode o train_lstm.py atual para gerar a divisao "
+                         f"(ou passe --split).")
+    split = np.load(split_path, allow_pickle=True)
+    if int(split["n_amostras"]) != len(X):
+        raise SystemExit(f"O {split_path} foi gerado para {int(split['n_amostras'])} amostras, "
+                         f"mas {args.data} tem {len(X)}. Use o mesmo .npz do treino.")
+    test_idx = split["idx_teste"]
+    if "signer_ids" in split.files:
+        print(f"Sinalizadores no teste: {sorted(set(split['signer_ids'][test_idx].tolist()))}")
     X_test, y_test = X[test_idx], y[test_idx]
     print(f"Teste: {len(test_idx)} amostras")
 
@@ -147,6 +155,7 @@ def main():
     for count, real, pred in sorted(errors, reverse=True)[:10]:
         print(f"  {real} -> {pred}: {count}")
 
+    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     plot_confusion(cm, labels, args.output, normalize=args.normalize)
     print(f"\nMatriz de confusao salva em {args.output}")
 

@@ -13,9 +13,16 @@ Para cada sistema o script mostra:
   - chrF e quantas frases sairam identicas a referencia
   - as frases com menor BLEU, para ver onde o sistema erra
 
+Separador das glosas no CSV: use "|" (ex.: POR FAVOR|ONDE|BANHEIRO). Sem "|", separa por
+espaco (so serve se nenhuma glosa tiver espaco, como "Por favor").
+
+IMPORTANTE: as regras de gerar_regras foram escritas olhando glosas_desenvolvimento.csv.
+Para medir de verdade, avalie em glosas_teste.csv (frases que NAO foram usadas para
+escrever as regras) e nao mexa nas regras depois de ver o resultado do teste.
+
 Uso:
-  python avaliar_frases.py
-  python avaliar_frases.py --app
+  python avaliar_frases.py --csv glosas_teste.csv
+  python avaliar_frases.py --csv glosas_teste.csv --app
   python avaliar_frases.py --app --llm qwen2.5:3b
   python avaliar_frases.py --app --sem-caixa      # BLEU ignorando maiusculas
 
@@ -45,6 +52,11 @@ EXIBIR = {"america": "América", "maca": "maçã"}
 ARTIGO = {"Masc": "o", "Fem": "a"}
 ARTIGO_PL = {"Masc": "os", "Fem": "as"}
 DE = {"Masc": "do", "Fem": "da"}
+
+
+def separar_glosas(texto):
+    texto = texto.strip()
+    return [g.strip() for g in texto.split("|")] if "|" in texto else texto.split()
 
 
 def analisar(glosa):
@@ -161,7 +173,8 @@ def gerar_app(glosas, pausa=0.0):
 
 
 def bleu_por_frase(bleu, hipoteses, referencias):
-    # sentence_score usa suavizacao: sem ela, frase curta sem 4-grama daria 0
+    # `bleu` precisa ter effective_order=True: sem isso, frase com menos de 4 palavras
+    # (ex.: "Cinco bancos.") recebe 0 mesmo quando e identica a referencia.
     return [bleu.sentence_score(h, [r]).score for h, r in zip(hipoteses, referencias)]
 
 
@@ -190,13 +203,16 @@ def avaliar(nome, hipoteses, referencias, glosas, args):
     bleu = BLEU(lowercase=args.sem_caixa)
     chrf = CHRF()
     resultado = bleu.corpus_score(hipoteses, [referencias])
-    pontos = bleu_por_frase(bleu, hipoteses, referencias)
+    # So o BLEU POR FRASE usa effective_order; o BLEU de corpus (o numero principal) nao muda.
+    pontos = bleu_por_frase(BLEU(lowercase=args.sem_caixa, effective_order=True), hipoteses, referencias)
     exatas = sum(h.strip().lower() == r.strip().lower() for h, r in zip(hipoteses, referencias))
     ic = intervalo_bootstrap(bleu, hipoteses, referencias, args.bootstrap)
+    ic_chrf = intervalo_bootstrap(chrf, hipoteses, referencias, args.bootstrap)
 
     prec = "/".join(f"{p:.1f}" for p in resultado.precisions)
     faixa = f" (IC95% {ic[0]:.1f}-{ic[1]:.1f})" if ic else ""
-    print(f"{nome:8} BLEU {resultado.score:5.1f}{faixa} | chrF {chrf.corpus_score(hipoteses, [referencias]).score:5.1f}"
+    faixa_chrf = f" (IC95% {ic_chrf[0]:.1f}-{ic_chrf[1]:.1f})" if ic_chrf else ""
+    print(f"{nome:8} BLEU {resultado.score:5.1f}{faixa} | chrF {chrf.corpus_score(hipoteses, [referencias]).score:5.1f}{faixa_chrf}"
           f" | identicas {exatas}/{len(referencias)}")
     print(f"{'':8} precisoes 1-4 gramas {prec} | BP {resultado.bp:.3f} | tamanho hipotese/referencia {resultado.ratio:.3f}")
 
@@ -215,6 +231,7 @@ def avaliar(nome, hipoteses, referencias, glosas, args):
         "bp": round(resultado.bp, 4),
         "razao_tamanho": round(resultado.ratio, 4),
         "chrf": round(chrf.corpus_score(hipoteses, [referencias]).score, 2),
+        "chrf_ic95": [round(ic_chrf[0], 2), round(ic_chrf[1], 2)] if ic_chrf else None,
         "identicas": exatas,
         "frases": len(referencias),
         "assinatura": str(bleu.get_signature()),
@@ -224,16 +241,22 @@ def avaliar(nome, hipoteses, referencias, glosas, args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default="glosas_referencia.csv", help="colunas: glosas (separadas por espaco), referencia")
+    parser.add_argument("--csv", default="glosas_teste.csv", help="colunas: glosas (separadas por |), referencia")
     parser.add_argument("--llm", default=None, help="nome do modelo no Ollama (ex. qwen2.5:3b). Sem isso, so roda regras+spaCy.")
     parser.add_argument("--app", action="store_true", help="avalia o tradutor do app (frases.montar_frase: Groq/Gemini). Precisa das chaves de API.")
     parser.add_argument("--pausa", type=float, default=0.0, help="segundos de espera entre as chamadas do --app (evita limite de requisicoes)")
     parser.add_argument("--sem-caixa", action="store_true", help="BLEU sem diferenciar maiusculas de minusculas")
     parser.add_argument("--bootstrap", type=int, default=1000, help="reamostragens para o intervalo de confianca do BLEU (0 desliga)")
     parser.add_argument("--piores", type=int, default=5, help="quantas frases de menor BLEU listar por sistema (0 desliga)")
-    parser.add_argument("--out", default="resultados_frases.csv")
-    parser.add_argument("--json", default="resultados_bleu.json", help="onde salvar as metricas em JSON")
+    parser.add_argument("--out", default=None, help="planilha de saida (padrao: resultados/frases_<csv>.csv)")
+    parser.add_argument("--json", default=None, help="metricas em JSON (padrao: resultados/bleu_<csv>.json)")
     args = parser.parse_args()
+
+    nome_csv = os.path.splitext(os.path.basename(args.csv))[0]
+    args.out = args.out or os.path.join("resultados", f"frases_{nome_csv}.csv")
+    args.json = args.json or os.path.join("resultados", f"bleu_{nome_csv}.json")
+    for caminho in (args.out, args.json):
+        os.makedirs(os.path.dirname(caminho) or ".", exist_ok=True)
 
     if args.app:
         try:  # o app le GROQ_API_KEY / GEMINI_API_KEY do ambiente; aceita tambem um arquivo .env
@@ -244,7 +267,7 @@ def main():
 
     with open(args.csv, encoding="utf-8") as f:
         linhas = list(csv.DictReader(f))
-    glosas = [l["glosas"].split() for l in linhas]
+    glosas = [separar_glosas(l["glosas"]) for l in linhas]
     referencias = [l["referencia"] for l in linhas]
 
     regras = [gerar_regras(g) for g in glosas]

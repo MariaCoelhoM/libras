@@ -26,7 +26,8 @@ from libras.landmarks import (
 from extract_landmarks_imagem import extract_landmarks_from_mp_image
 from libras.landmarks import normalize_landmarks
 from libras.features import normalize_face, wrist_trajectory, assemble_features, needs_pose
-from extract_landmarks_video_hands_face_minds_libras import (
+# Mesmo extrator (e mesmo recorte do rosto) usado no treino.
+from extract_landmarks_minds_libras import (
     extract_hands_from_frame,
     extract_face_from_frame,
     extract_shoulders_from_frame,
@@ -178,7 +179,7 @@ CONFIG_PADRAO_DINAMICO = {
     "velocity": False,
 }
 
-# Modelo unico treinado com MINDS + Nucleo Comum (train_unificado.py).
+# Modelo unico treinado com MINDS + Nucleo Comum (train_lstm.py).
 # Se o arquivo existir, ele e usado sozinho; senao, vale a fusao antiga.
 MODELO_UNIFICADO = "modelo_libras_unificado.keras"
 

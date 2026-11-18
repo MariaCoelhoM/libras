@@ -17,27 +17,27 @@ frases com LLM - foi desenvolvido no **Visual Studio Codespaces (VS Code)**.
 libras/                                            modulo comum
   landmarks.py                                      detectores MediaPipe, normalizacao, amostragem de frames, leitura de zip/CSV
   features.py                                       normalizacao do rosto e trajetoria do punho
-  training_utils.py                                 filtro --classes, sinalizador, contagem de amostras
+  training_utils.py                                 filtro --classes, sinalizador (MINDS e V-Librasil), divisao por sinalizador, contagem
+  experiments.py                                    divisoes, metricas e gravacao de resultados em resultados/<experimento>/
 
 extract_landmarks_imagem.py                          extrai landmarks do alfabeto (imagens, dataset archive/train e archive/test)
-extract_landmarks_minds_libras.py                    extrai landmarks maos+rosto+trajetoria dos videos do MINDS-Libras (recorta e interpola)
-extract_landmarks_video_hands_face_minds_libras.py   versao anterior do extrator de maos+rosto do MINDS-Libras
-extract_landmarks_vlibras.py                         extrai landmarks dos videos do V-Librasil (Nucleo Comum)
+extract_landmarks_minds_libras.py                    extrai landmarks maos+rosto+trajetoria dos videos (MINDS-Libras e V-Librasil, via --filename_regex); recorta e interpola
 
 train_cnn.py                                         treina o modelo do alfabeto (CNN 1D)
-train_lstm.py                                        treina o modelo de palavras (LSTM)
-train_baseline.py                                    baseline (Random Forest / k-NN) para comparar com a CNN e a LSTM
-matriz.py                                            gera a matriz de confusao do modelo unificado
+train_lstm.py                                        une MINDS + V-Librasil e treina o modelo de palavras (LSTM), dividindo por sinalizador
+train_baseline.py                                    baseline (Random Forest / k-NN), no mesmo teste da LSTM (--split)
+matriz.py                                            matriz de confusao do modelo unificado, no teste salvo pelo treino
 
 frases.py                                            monta frases a partir das palavras reconhecidas (spaCy + agentes LLM)
-avaliar_frases.py                                    avalia as frases geradas (ex.: sacreBLEU) contra glosas_referencia.csv
-glosas_referencia.csv                                glosas/frases de referencia para a avaliacao
+avaliar_frases.py                                    avalia as frases geradas (BLEU e chrF com IC95%)
+glosas_desenvolvimento.csv                           frases usadas para escrever as regras (NAO usar para medir)
+glosas_teste.csv                                     frases de teste, separadas das de desenvolvimento
 
 landmarks.npz                                        landmarks do alfabeto
 landmarks_unificado.npz                              landmarks de palavras: MINDS-Libras + V-Librasil unidos
 modelo_alfabeto.keras                                modelo do alfabeto treinado
-modelo_libras_unificado.keras (+ _config/_labels)    modelo de palavras treinado (27 classes)
-resultados/                                          resultados dos experimentos (ex.: baseline em JSON)
+modelo_libras_unificado.keras (+ _config/_labels/_split)  modelo de palavras treinado (27 classes) e a divisao usada
+resultados/                                          resultados dos experimentos (LSTM, baselines, BLEU/chrF)
 
 app.py                                               servidor Flask (demo ao vivo pela webcam)
 templates/index.html                                 pagina da demo (modo estatico e dinamico)
@@ -167,8 +167,14 @@ Vocabulario atual do modelo unificado:
 ]
 ```
 
-O nome do arquivo identifica classe e sinalizador (MINDS-Libras), ex.:
-`01AcontecerSinalizador02-5.mp4` -> classe `Acontecer`, sinalizador `02`.
+O nome do arquivo identifica classe e sinalizador:
+
+- MINDS-Libras: `01AcontecerSinalizador02-5.mp4` -> classe `Acontecer`, sinalizador `02`.
+- V-Librasil: `Não_Articulador20.mp4` -> classe `Não`, articulador (sinalizador) `20`.
+
+O treino divide por sinalizador (nenhuma pessoa em treino e teste ao mesmo tempo),
+separadamente em cada base, e usa o prefixo da base para nao confundir o
+sinalizador `01` do MINDS com o articulador `01` do V-Librasil.
 
 Cada amostra de palavra tem 30 frames e 406 features por frame (126 das maos,
 276 do rosto normalizado e 4 da trajetoria do punho).
@@ -192,12 +198,17 @@ python extract_landmarks_minds_libras.py \
   --quiet
 ```
 
-V-Librasil (Nucleo Comum):
+V-Librasil (Nucleo Comum), com o MESMO extrator e o mesmo recorte do rosto do
+MINDS-Libras (so muda o regex que le a classe do nome do arquivo; o grupo 1 e a
+classe). O resultado deve ter 138 amostras:
 
 ```bash
-python extract_landmarks_vlibras.py \
+python extract_landmarks_minds_libras.py \
   --dataset_dir ./v-librasil \
-  --output landmarks_nucleo_comum.npz
+  --filename_regex "^(Compreender|Desculpa|Não|Onde|Por favor|Sim|Surdo)_Articulador\d+\.mp4$" \
+  --output landmarks_nucleo_comum.npz \
+  --failures_log falhas_nucleo.csv \
+  --quiet
 ```
 
 ## 6. Treinar
@@ -210,23 +221,33 @@ python train_cnn.py --data landmarks.npz --output modelo_alfabeto.keras \
   --counts_output resultados_alfabeto_contagem.csv
 ```
 
-Palavras (LSTM), com rosto normalizado e trajetoria:
+Palavras (LSTM): une os dois `.npz` (gera `landmarks_unificado.npz`), divide por
+sinalizador e treina com rosto normalizado e trajetoria:
 
 ```bash
-python train_lstm.py --data landmarks_unificado.npz \
-  --face_norm --trajectory \
+python train_lstm.py \
+  --minds landmarks_minds_libras_trimmed_interpolated.npz \
+  --nucleo landmarks_nucleo_comum.npz \
   --output modelo_libras_unificado.keras
 ```
 
-O treino salva ao lado do modelo o `_labels.json` (classes) e o `_config.json`
-(representacao usada).
+O treino salva ao lado do modelo o `_labels.json` (classes), o `_config.json`
+(representacao usada), o `_relatorio.txt` e o `_split.npz` (indices de treino,
+validacao e teste). Os resultados versionaveis ficam em `resultados/lstm_unificado/`
+(`metricas.json`, `matriz_confusao.csv/png`, `argumentos.json`, `relatorio.txt`...).
+`--test_size` e a fracao de SINALIZADORES no teste (por base); `--seed` muda o
+sorteio dos sinalizadores.
 
-Baseline (Random Forest ou k-NN) com a mesma representacao e a mesma divisao
-do modelo neural:
+Baseline (Random Forest ou k-NN) com a mesma representacao e EXATAMENTE o mesmo
+teste da LSTM (nao use `--split` junto com `--classes`):
 
 ```bash
 python train_baseline.py --data landmarks_unificado.npz \
-  --config modelo_libras_unificado_config.json
+  --config modelo_libras_unificado_config.json \
+  --split modelo_libras_unificado_split.npz --model rf
+python train_baseline.py --data landmarks_unificado.npz \
+  --config modelo_libras_unificado_config.json \
+  --split modelo_libras_unificado_split.npz --model knn
 ```
 
 Para treinar so um subconjunto do vocabulario, use `--classes`:
@@ -234,19 +255,25 @@ Para treinar so um subconjunto do vocabulario, use `--classes`:
 
 ## 7. Avaliar
 
-Matriz de confusao do modelo unificado (reproduz a divisao de teste do
-treino e mostra acuracia geral, por origem e por classe):
+Matriz de confusao do modelo unificado (le a divisao de teste salva pelo treino em
+`_split.npz` e mostra acuracia geral, por origem e por classe; a acuracia deve bater
+com a do log do treino):
 
 ```bash
 python matriz.py --model modelo_libras_unificado.keras \
   --data landmarks_unificado.npz --normalize
 ```
 
-Frases (LLM) contra as glosas de referencia:
+Frases contra as referencias (BLEU e chrF com IC95%). As glosas do CSV sao separadas
+por `|` (ex.: `POR FAVOR|ONDE|BANHEIRO`). As regras foram escritas olhando
+`glosas_desenvolvimento.csv`; o numero que vale e o do `glosas_teste.csv`:
 
 ```bash
-python avaliar_frases.py
+python avaliar_frases.py --csv glosas_teste.csv
+python avaliar_frases.py --csv glosas_teste.csv --app --pausa 2   # LLM (precisa das chaves)
 ```
+
+Salva `resultados/bleu_glosas_teste.json` e `resultados/frases_glosas_teste.csv`.
 
 ## 8. Rodar a demo
 

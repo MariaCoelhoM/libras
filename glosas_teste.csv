@@ -1,0 +1,27 @@
+glosas,referencia
+ONDE|BANHEIRO,Onde está o banheiro?
+ONDE|BANCO,Onde está o banco?
+ONDE|FILHO,Onde está o filho?
+ALUNO|SURDO,O aluno é surdo.
+FILHO|SURDO,O filho é surdo.
+ALUNO|NÃO|COMPREENDER,O aluno não compreende.
+ALUNO|COMPREENDER,O aluno compreende.
+SURDO|COMPREENDER,O surdo compreende.
+SIM,Sim.
+NÃO,Não.
+DESCULPA,Desculpa.
+"POR FAVOR|ONDE|BANHEIRO","Por favor, onde está o banheiro?"
+FILHO|NÃO|MEDO,O filho não tem medo.
+BARULHO|NÃO|ACONTECER,O barulho não acontece.
+VACINA|NÃO|RUIM,A vacina não é ruim.
+BALA|AMARELO,A bala é amarela.
+BANCO|AMARELO,O banco é amarelo.
+MACA|AMARELO,A maçã é amarela.
+SAPO|RUIM,O sapo é ruim.
+FILHO|BALA|APROVEITAR,O filho aproveita a bala.
+ALUNO|SAPO|CONHECER,O aluno conhece o sapo.
+CINCO|FILHO|MEDO,Os cinco filhos têm medo.
+CINCO|BANCO,Cinco bancos.
+ALUNO|MEDO|ESPELHO,O aluno tem medo do espelho.
+BANCO|ESQUINA,O banco está na esquina.
+SURDO|VONTADE|CONHECER,O surdo tem vontade de conhecer.

@@ -12,6 +12,7 @@
       1,
       2
     ],
+    "split": "modelo_libras_unificado_split.npz",
     "test_size": 0.375,
     "split_seed": 42,
     "folds": 0,
@@ -28,6 +29,7 @@
     "face_norm": true,
     "trajectory": true
   },
+  "divisao": "mesmo teste da LSTM, por sinalizador (--split)",
   "classes": [
     "Acontecer",
     "Aluno",
@@ -61,16 +63,16 @@
     {
       "divisao": 1,
       "seed": 0,
-      "acuracia": 0.5710227272727273,
-      "f1_macro": 0.5349836280251894,
+      "acuracia": 0.46382978723404256,
+      "f1_macro": 0.47508949377311116,
       "acuracia_por_origem": {
-        "minds": 0.6133333333333333,
-        "nucleo": 0.3269230769230769
+        "minds": 0.455,
+        "nucleo": 0.5142857142857142
       }
     }
   ],
-  "acuracia_media": 0.5710227272727273,
+  "acuracia_media": 0.46382978723404256,
   "acuracia_desvio": 0.0,
-  "f1_macro_medio": 0.5349836280251894,
+  "f1_macro_medio": 0.47508949377311116,
   "f1_macro_desvio": 0.0
 }
