@@ -6,7 +6,7 @@ avalia SO o teste, lendo os indices do <modelo>_split.npz que o train_lstm.py
 salva (divisao por sinalizador). Nao sorteia nada de novo.
 
 Uso:
-    python matriz.py --model modelo_libras_unificado.keras --data landmarks_unificado.npz
+    python matriz.py --model modelo_libras_unificado_treino_val.keras --data landmarks_unificado.npz
 
 Confira: a acuracia impressa aqui deve bater com a "Acuracia no teste" do log do
 treino. O _split.npz so vale para o .npz com que o modelo foi treinado.
@@ -85,7 +85,7 @@ def plot_confusion(cm, classes, output, normalize=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Matriz de confusao do modelo unificado no conjunto de teste.")
-    parser.add_argument("--model", default="modelo_libras_unificado.keras")
+    parser.add_argument("--model", default="modelo_libras_unificado_treino_val.keras")
     parser.add_argument("--data", default="landmarks_unificado.npz", help=".npz unificado usado no treino")
     parser.add_argument("--split", default=None,
                         help="_split.npz salvo pelo treino (padrao: <modelo>_split.npz)")

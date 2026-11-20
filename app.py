@@ -181,7 +181,7 @@ CONFIG_PADRAO_DINAMICO = {
 
 # Modelo unico treinado com MINDS + Nucleo Comum (train_lstm.py).
 # Se o arquivo existir, ele e usado sozinho; senao, vale a fusao antiga.
-MODELO_UNIFICADO = "modelo_libras_unificado.keras"
+MODELO_UNIFICADO = "modelo_libras_unificado_treino_val.keras"
 
 if os.path.exists(caminho(MODELO_UNIFICADO)):
     MODELOS_DINAMICOS_ARQUIVOS = {"unificado": MODELO_UNIFICADO}

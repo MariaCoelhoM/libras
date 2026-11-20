@@ -1,8 +1,0 @@
-{
-  "use_face": true,
-  "face_norm": true,
-  "trajectory": true,
-  "velocity": false,
-  "n_features": 406,
-  "timesteps": 30
-}

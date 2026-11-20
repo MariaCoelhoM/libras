@@ -38,7 +38,7 @@ glosas_teste.csv                                     frases de teste, separadas 
 landmarks.npz                                        landmarks do alfabeto
 landmarks_unificado.npz                              landmarks de palavras: MINDS-Libras + V-Librasil unidos
 modelo_alfabeto.keras                                modelo do alfabeto treinado
-modelo_libras_unificado.keras (+ _config/_labels/_split)  modelo de palavras treinado (27 classes) e a divisao usada
+modelo_libras_unificado_treino_val.keras (+ _config/_labels/_split/_relatorio)  modelo de palavras treinado com treino+validacao (27 classes) e a divisao usada
 resultados/                                          resultados dos experimentos (LSTM, baselines, BLEU/chrF)
 
 app.py                                               servidor Flask (demo ao vivo pela webcam)
@@ -229,21 +229,40 @@ python train_cnn.py --data landmarks.npz --output modelo_alfabeto.keras \
 ```
 
 Palavras (LSTM): une os dois `.npz` (gera `landmarks_unificado.npz`), divide por
-sinalizador e treina com rosto normalizado e trajetoria:
+sinalizador e treina com rosto normalizado e trajetoria. O treino tem duas etapas.
+
+Etapa 1, com validacao e EarlyStopping (serve para definir o numero de epocas; o
+modelo fica em `/tmp` e nao e versionado):
 
 ```bash
 python train_lstm.py \
   --minds landmarks_minds_libras_trimmed_interpolated.npz \
   --nucleo landmarks_nucleo_comum.npz \
-  --output modelo_libras_unificado.keras
+  --output /tmp/lstm_unificado.keras
+```
+
+Nessa etapa o treino parou na epoca 19 de 40 (melhor epoca 9). Os resultados ficam
+em `resultados/lstm_unificado/`.
+
+Etapa 2, modelo final: treino com treino+validacao (`--val_size 0`, sem
+EarlyStopping) e as mesmas 19 epocas, no mesmo teste:
+
+```bash
+python train_lstm.py \
+  --minds landmarks_minds_libras_trimmed_interpolated.npz \
+  --nucleo landmarks_nucleo_comum.npz \
+  --val_size 0 --epochs 19 \
+  --experiment lstm_treino_val \
+  --output modelo_libras_unificado_treino_val.keras
 ```
 
 O treino salva ao lado do modelo o `_labels.json` (classes), o `_config.json`
 (representacao usada), o `_relatorio.txt` e o `_split.npz` (indices de treino,
-validacao e teste). Os resultados versionaveis ficam em `resultados/lstm_unificado/`
+validacao e teste). Os resultados versionaveis ficam em `resultados/<experimento>/`
 (`metricas.json`, `matriz_confusao.csv/png`, `argumentos.json`, `relatorio.txt`...).
 `--test_size` e a fracao de SINALIZADORES no teste (por base); `--seed` muda o
-sorteio dos sinalizadores.
+sorteio dos sinalizadores. O teste depende so de `--test_size` e `--seed`, entao as
+duas etapas avaliam as mesmas 235 amostras (MINDS 200, Nucleo Comum 35).
 
 Variante sem pesos de classe (a padrao usa `--class_weight balanced`):
 
@@ -258,9 +277,10 @@ Com `--output /tmp/...`, o modelo e seus arquivos (`_labels.json`, `_config.json
 `resultados/lstm_unificado_semPesos/`. A divisao depende so de `--seed` e
 `--test_size`, entao o teste e o mesmo do treino com pesos.
 
-O modelo versionado (`modelo_libras_unificado.keras`, usado pela demo) e o treinado
-com pesos (padrao). `resultados/lstm_unificado/` guarda os resultados dele e
-`resultados/lstm_unificado_semPesos/` guarda o experimento de comparacao. A matriz
+O modelo versionado (`modelo_libras_unificado_treino_val.keras`, usado pela demo) e o
+da etapa 2, treinado com pesos (padrao). `resultados/lstm_treino_val/` guarda os
+resultados dele (LSTM, baselines e matriz). `resultados/lstm_unificado/` guarda a
+etapa 1 e `resultados/lstm_unificado_semPesos/` guarda o experimento de comparacao. A matriz
 de confusao do modelo sem pesos (o `.keras` fica em `/tmp`) e gerada assim:
 
 ```bash
@@ -273,11 +293,13 @@ teste da LSTM (nao use `--split` junto com `--classes`):
 
 ```bash
 python train_baseline.py --data landmarks_unificado.npz \
-  --config modelo_libras_unificado_config.json \
-  --split modelo_libras_unificado_split.npz --model rf
+  --config modelo_libras_unificado_treino_val_config.json \
+  --split modelo_libras_unificado_treino_val_split.npz --model rf \
+  --results_dir resultados/lstm_treino_val
 python train_baseline.py --data landmarks_unificado.npz \
-  --config modelo_libras_unificado_config.json \
-  --split modelo_libras_unificado_split.npz --model knn
+  --config modelo_libras_unificado_treino_val_config.json \
+  --split modelo_libras_unificado_treino_val_split.npz --model knn \
+  --results_dir resultados/lstm_treino_val
 ```
 
 Para treinar so um subconjunto do vocabulario, use `--classes`:
@@ -290,8 +312,9 @@ Matriz de confusao do modelo unificado (le a divisao de teste salva pelo treino 
 com a do log do treino):
 
 ```bash
-python matriz.py --model modelo_libras_unificado.keras \
-  --data landmarks_unificado.npz --normalize
+python matriz.py --model modelo_libras_unificado_treino_val.keras \
+  --data landmarks_unificado.npz --normalize \
+  --output resultados/lstm_treino_val/matriz_confusao_teste.png
 ```
 
 Frases contra as referencias (BLEU e chrF com IC95%). As glosas do CSV sao separadas
