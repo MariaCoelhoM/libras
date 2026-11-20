@@ -95,6 +95,9 @@ def split_por_sinalizador(signer_ids, origem, indices, fracao, seed, min_grupos=
     """
     indices = np.asarray(indices)
     origem = np.asarray(origem)
+    if fracao <= 0:
+        # Sem separacao (ex.: --val_size 0 para treinar com treino+validacao).
+        return np.sort(indices), np.array([], dtype=int)
     resto, separado = [], []
     for o in np.unique(origem[indices]):
         sub = indices[origem[indices] == o]

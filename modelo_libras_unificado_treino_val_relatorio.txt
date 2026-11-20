@@ -1,0 +1,40 @@
+Acuracia no teste (geral): 0.7532
+Divisao por sinalizador | teste: ['minds:02', 'minds:10', 'nucleo:1', 'nucleo:10', 'nucleo:17', 'nucleo:4', 'nucleo:6']
+Epocas: 19 de 19 (sem EarlyStopping)
+Pesos de classe: balanced
+Acuracia no teste (minds, 200 amostras): 0.7450
+Acuracia no teste (nucleo, 35 amostras): 0.8000
+
+              precision    recall  f1-score   support
+
+   Acontecer       0.78      0.70      0.74        10
+       Aluno       0.69      0.90      0.78        10
+     Amarelo       1.00      0.70      0.82        10
+     America       1.00      0.80      0.89        10
+  Aproveitar       0.57      0.80      0.67        10
+        Bala       0.91      1.00      0.95        10
+       Banco       0.77      1.00      0.87        10
+    Banheiro       0.60      0.30      0.40        10
+     Barulho       1.00      0.60      0.75        10
+       Cinco       0.80      0.80      0.80        10
+ Compreender       0.56      1.00      0.71         5
+    Conhecer       0.83      1.00      0.91        10
+    Desculpa       0.36      1.00      0.53         5
+     Espelho       1.00      0.20      0.33        10
+     Esquina       0.91      1.00      0.95        10
+       Filho       0.56      0.50      0.53        10
+        Maca       0.88      0.70      0.78        10
+        Medo       0.89      0.80      0.84        10
+        Não       0.00      0.00      0.00         5
+        Onde       0.50      1.00      0.67         5
+   Por favor       0.83      1.00      0.91         5
+        Ruim       1.00      0.60      0.75        10
+        Sapo       1.00      0.70      0.82        10
+         Sim       0.50      0.80      0.62         5
+       Surdo       0.44      0.80      0.57         5
+      Vacina       1.00      1.00      1.00        10
+     Vontade       1.00      0.80      0.89        10
+
+    accuracy                           0.75       235
+   macro avg       0.75      0.76      0.72       235
+weighted avg       0.80      0.75      0.74       235

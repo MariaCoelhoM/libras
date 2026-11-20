@@ -1,0 +1,195 @@
+{
+  "experimento": "lstm_treino_val",
+  "resumo": {
+    "n_dobras": 1,
+    "n_sementes": 1,
+    "acuracia": {
+      "media": 0.7531914893617021,
+      "desvio_entre_dobras": null,
+      "desvio_entre_sementes": null
+    },
+    "f1_macro": {
+      "media": 0.7213732048224503,
+      "desvio_entre_dobras": null,
+      "desvio_entre_sementes": null
+    }
+  },
+  "por_rodada": [
+    {
+      "dobra": 0,
+      "semente": 42,
+      "n_teste": 235,
+      "acuracia": 0.7531914893617021,
+      "f1_macro": 0.7213732048224503,
+      "n_treino": 703,
+      "n_validacao": 0,
+      "acuracia_keras": 0.7531914710998535,
+      "epocas_treinadas": 19
+    }
+  ],
+  "por_classe": {
+    "Acontecer": {
+      "precisao": 0.7777777777777778,
+      "revocacao": 0.7,
+      "f1": 0.7368421052631579,
+      "suporte": 10
+    },
+    "Aluno": {
+      "precisao": 0.6923076923076923,
+      "revocacao": 0.9,
+      "f1": 0.782608695652174,
+      "suporte": 10
+    },
+    "Amarelo": {
+      "precisao": 1.0,
+      "revocacao": 0.7,
+      "f1": 0.8235294117647058,
+      "suporte": 10
+    },
+    "America": {
+      "precisao": 1.0,
+      "revocacao": 0.8,
+      "f1": 0.8888888888888888,
+      "suporte": 10
+    },
+    "Aproveitar": {
+      "precisao": 0.5714285714285714,
+      "revocacao": 0.8,
+      "f1": 0.6666666666666666,
+      "suporte": 10
+    },
+    "Bala": {
+      "precisao": 0.9090909090909091,
+      "revocacao": 1.0,
+      "f1": 0.9523809523809523,
+      "suporte": 10
+    },
+    "Banco": {
+      "precisao": 0.7692307692307693,
+      "revocacao": 1.0,
+      "f1": 0.8695652173913043,
+      "suporte": 10
+    },
+    "Banheiro": {
+      "precisao": 0.6,
+      "revocacao": 0.3,
+      "f1": 0.4,
+      "suporte": 10
+    },
+    "Barulho": {
+      "precisao": 1.0,
+      "revocacao": 0.6,
+      "f1": 0.75,
+      "suporte": 10
+    },
+    "Cinco": {
+      "precisao": 0.8,
+      "revocacao": 0.8,
+      "f1": 0.8,
+      "suporte": 10
+    },
+    "Compreender": {
+      "precisao": 0.5555555555555556,
+      "revocacao": 1.0,
+      "f1": 0.7142857142857143,
+      "suporte": 5
+    },
+    "Conhecer": {
+      "precisao": 0.8333333333333334,
+      "revocacao": 1.0,
+      "f1": 0.9090909090909091,
+      "suporte": 10
+    },
+    "Desculpa": {
+      "precisao": 0.35714285714285715,
+      "revocacao": 1.0,
+      "f1": 0.5263157894736842,
+      "suporte": 5
+    },
+    "Espelho": {
+      "precisao": 1.0,
+      "revocacao": 0.2,
+      "f1": 0.3333333333333333,
+      "suporte": 10
+    },
+    "Esquina": {
+      "precisao": 0.9090909090909091,
+      "revocacao": 1.0,
+      "f1": 0.9523809523809523,
+      "suporte": 10
+    },
+    "Filho": {
+      "precisao": 0.5555555555555556,
+      "revocacao": 0.5,
+      "f1": 0.5263157894736842,
+      "suporte": 10
+    },
+    "Maca": {
+      "precisao": 0.875,
+      "revocacao": 0.7,
+      "f1": 0.7777777777777778,
+      "suporte": 10
+    },
+    "Medo": {
+      "precisao": 0.8888888888888888,
+      "revocacao": 0.8,
+      "f1": 0.8421052631578947,
+      "suporte": 10
+    },
+    "Não": {
+      "precisao": 0.0,
+      "revocacao": 0.0,
+      "f1": 0.0,
+      "suporte": 5
+    },
+    "Onde": {
+      "precisao": 0.5,
+      "revocacao": 1.0,
+      "f1": 0.6666666666666666,
+      "suporte": 5
+    },
+    "Por favor": {
+      "precisao": 0.8333333333333334,
+      "revocacao": 1.0,
+      "f1": 0.9090909090909091,
+      "suporte": 5
+    },
+    "Ruim": {
+      "precisao": 1.0,
+      "revocacao": 0.6,
+      "f1": 0.75,
+      "suporte": 10
+    },
+    "Sapo": {
+      "precisao": 1.0,
+      "revocacao": 0.7,
+      "f1": 0.8235294117647058,
+      "suporte": 10
+    },
+    "Sim": {
+      "precisao": 0.5,
+      "revocacao": 0.8,
+      "f1": 0.6153846153846154,
+      "suporte": 5
+    },
+    "Surdo": {
+      "precisao": 0.4444444444444444,
+      "revocacao": 0.8,
+      "f1": 0.5714285714285714,
+      "suporte": 5
+    },
+    "Vacina": {
+      "precisao": 1.0,
+      "revocacao": 1.0,
+      "f1": 1.0,
+      "suporte": 10
+    },
+    "Vontade": {
+      "precisao": 1.0,
+      "revocacao": 0.8,
+      "f1": 0.8888888888888888,
+      "suporte": 10
+    }
+  },
+  "observacao": "por_classe e as matrizes somam todas as rodadas (dobras x sementes)."
+}

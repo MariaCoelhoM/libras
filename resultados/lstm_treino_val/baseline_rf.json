@@ -1,0 +1,98 @@
+{
+  "experimento": "baseline_rf",
+  "argumentos": {
+    "data": "landmarks_unificado.npz",
+    "model": "rf",
+    "experiment": null,
+    "results_dir": "resultados",
+    "n_estimators": 300,
+    "k": 5,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "split": "modelo_libras_unificado_treino_val_split.npz",
+    "test_size": 0.375,
+    "split_seed": 42,
+    "folds": 0,
+    "by_signer": false,
+    "signer_regex": "Sinalizador(\\d+)",
+    "config": "modelo_libras_unificado_treino_val_config.json",
+    "no_face": false,
+    "face_norm": false,
+    "trajectory": false,
+    "classes": null
+  },
+  "representacao": {
+    "use_face": true,
+    "face_norm": true,
+    "trajectory": true
+  },
+  "divisao": "mesmo teste da LSTM, por sinalizador (--split)",
+  "classes": [
+    "Acontecer",
+    "Aluno",
+    "Amarelo",
+    "America",
+    "Aproveitar",
+    "Bala",
+    "Banco",
+    "Banheiro",
+    "Barulho",
+    "Cinco",
+    "Compreender",
+    "Conhecer",
+    "Desculpa",
+    "Espelho",
+    "Esquina",
+    "Filho",
+    "Maca",
+    "Medo",
+    "Não",
+    "Onde",
+    "Por favor",
+    "Ruim",
+    "Sapo",
+    "Sim",
+    "Surdo",
+    "Vacina",
+    "Vontade"
+  ],
+  "execucoes": [
+    {
+      "divisao": 1,
+      "seed": 0,
+      "acuracia": 0.8340425531914893,
+      "f1_macro": 0.7934488188671245,
+      "acuracia_por_origem": {
+        "minds": 0.88,
+        "nucleo": 0.5714285714285714
+      }
+    },
+    {
+      "divisao": 1,
+      "seed": 1,
+      "acuracia": 0.851063829787234,
+      "f1_macro": 0.8176179621828057,
+      "acuracia_por_origem": {
+        "minds": 0.89,
+        "nucleo": 0.6285714285714286
+      }
+    },
+    {
+      "divisao": 1,
+      "seed": 2,
+      "acuracia": 0.8468085106382979,
+      "f1_macro": 0.8009518698631185,
+      "acuracia_por_origem": {
+        "minds": 0.9,
+        "nucleo": 0.5428571428571428
+      }
+    }
+  ],
+  "acuracia_media": 0.8439716312056738,
+  "acuracia_desvio": 0.007232651792330201,
+  "f1_macro_medio": 0.8040062169710162,
+  "f1_macro_desvio": 0.010100615471185464
+}

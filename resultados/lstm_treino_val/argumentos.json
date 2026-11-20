@@ -1,0 +1,40 @@
+{
+  "argumentos": {
+    "minds": "landmarks_minds_libras_trimmed_interpolated.npz",
+    "nucleo": "landmarks_nucleo_comum.npz",
+    "output": "modelo_libras_unificado_treino_val.keras",
+    "salvar_npz": "landmarks_unificado.npz",
+    "so_unir": false,
+    "timesteps": 30,
+    "epochs": 19,
+    "class_weight": "balanced",
+    "patience": 10,
+    "batch_size": 16,
+    "augment_copies": 5,
+    "test_size": 0.2,
+    "val_size": 0.0,
+    "signer_regex": "Sinalizador(\\d+)",
+    "signer_regex_nucleo": "Articulador(\\d+)",
+    "experiment": "lstm_treino_val",
+    "results_dir": "resultados",
+    "seed": 42,
+    "cpu": false,
+    "divisao": "por sinalizador, dentro de cada base",
+    "sinalizadores_teste": [
+      "minds:02",
+      "minds:10",
+      "nucleo:1",
+      "nucleo:10",
+      "nucleo:17",
+      "nucleo:4",
+      "nucleo:6"
+    ]
+  },
+  "versoes": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scikit-learn": "1.9.1",
+    "tensorflow": "2.22.0rc0"
+  },
+  "gerado_em": "2026-11-20T03:17:33"
+}
