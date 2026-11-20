@@ -16,7 +16,7 @@ ganhar, o ganho nao e artefato.
 
 Exemplos:
     python train_baseline.py --data landmarks_unificado.npz \\
-        --config modelo_libras_unificado_config.json --split modelo_libras_unificado_split.npz
+        --config modelo_libras_unificado_treino_val_config.json --split modelo_libras_unificado_treino_val_split.npz
     python train_baseline.py --data landmarks_minds_libras_trimmed_interpolated.npz --face_norm --trajectory --model knn
 """
 import argparse

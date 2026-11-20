@@ -28,6 +28,7 @@ train_lstm.py                                        une MINDS + V-Librasil e tr
 train_baseline.py                                    baseline (Random Forest / k-NN), no mesmo teste da LSTM (--split)
 matriz.py                                            matriz de confusao do modelo unificado, no teste salvo pelo treino
 resumo_resultados.py                                 junta resultados/<experimento>/metricas.json numa tabela (resumo.md e resumo.csv)
+tabela_resultados.py                                 tabela por modelo e por origem (MINDS x Nucleo Comum), com os baselines (tabela_modelos.md e .csv)
 diagnostico_deteccao.py                              diagnostico da deteccao de maos e rosto nos videos
 
 frases.py                                            monta frases a partir das palavras reconhecidas (spaCy + agentes LLM)
@@ -50,31 +51,33 @@ requirements.txt                                     dependencias
 
 ```bash
 pip install uv
-uv venv --python 3.11 .venv
+uv venv --python 3.14 .venv
 source .venv/bin/activate
-python --version   # deve mostrar 3.11.x
+python --version   # deve mostrar 3.14.x
 uv pip install -r requirements.txt
 uv pip uninstall opencv-python opencv-contrib-python
 uv pip install opencv-python-headless==4.13.0.92
 ```
 
-Como usamos o `.venv`, o `pip` pode nao existir dentro dele. Para instalar o
-Groq (agente principal do LLM) pelo proprio ambiente:
+Como o `.venv` e criado pelo `uv`, o `pip` pode nao existir dentro dele, e o
+`spacy download` precisa dele. Por isso, antes de baixar o modelo de portugues do
+spaCy (o comando instala a versao compativel com o `spacy` fixado em
+`requirements.txt`):
 
 ```bash
 python -m ensurepip --upgrade
-python -m pip install groq
-```
-
-Modelo de portugues do spaCy:
-
-```bash
 python -m spacy download pt_core_news_sm
 ```
 
-As versoes de `numpy`, `tensorflow`, `scikit-learn`, `mediapipe` e `opencv` em
-`requirements.txt` sao as usadas nos resultados de `resultados/` (Python 3.11).
-Os demais pacotes (flask, spacy, sacrebleu, groq etc.) nao tem versao fixa.
+O Groq e o Gemini nao pedem instalacao a parte: o `groq` ja esta no
+`requirements.txt` e o Gemini e chamado por HTTP (`urllib`, em `frases.py`).
+
+Todas as versoes de `requirements.txt` estao fixadas e sao as do ambiente que
+treinou o modelo final e gerou `resultados/lstm_treino_val/` (Python 3.14.2). O
+`tensorflow==2.22.0rc0` e uma versao candidata (pre-release). Os experimentos
+`lstm_unificado`, `lstm_unificado_semPesos` e `modelo_alfabeto` foram rodados antes,
+em Python 3.11.17 com numpy 2.4.6 e tensorflow 2.21.0 (registrado em cada
+`argumentos.json`, campo `versoes`).
 
 ## 2. Baixar os modelos do MediaPipe
 
@@ -108,6 +111,12 @@ export GEMINI_MODELO_RESERVA=
 ```
 
 `GEMINI_MODELO_RESERVA` é opcional (pode ficar vazio).
+
+Defina cada chave entre aspas simples e sem Enter dentro delas (uma quebra de
+linha na chave faz a API recusar o cabecalho). O `frases.py` remove espacos e
+quebras de linha das pontas e mascara a chave nas mensagens de erro. Nunca
+versione chaves; se usar um arquivo `.env` (lido pelo `avaliar_frases.py`),
+ele precisa estar no `.gitignore`.
 
 ## 4. Datasets
 
@@ -317,6 +326,15 @@ python matriz.py --model modelo_libras_unificado_treino_val.keras \
   --output resultados/lstm_treino_val/matriz_confusao_teste.png
 ```
 
+Tabela por modelo e por origem (LSTM, Random Forest, k-NN, no mesmo teste), para
+colar no texto:
+
+```bash
+python tabela_resultados.py
+```
+
+Salva `resultados/tabela_modelos.md` e `resultados/tabela_modelos.csv`.
+
 Frases contra as referencias (BLEU e chrF com IC95%). As glosas do CSV sao separadas
 por `|` (ex.: `POR FAVOR|ONDE|BANHEIRO`). As regras foram escritas olhando
 `glosas_desenvolvimento.csv`; o numero que vale e o do `glosas_teste.csv`:
@@ -327,6 +345,16 @@ python avaliar_frases.py --csv glosas_teste.csv --app --pausa 2   # LLM (precisa
 ```
 
 Salva `resultados/bleu_glosas_teste.json` e `resultados/frases_glosas_teste.csv`.
+
+O resultado com LLM (`--app`) nao e deterministico: varia entre execucoes e com a
+disponibilidade das APIs. Se uma resposta do LLM nao for uma traducao valida (por
+exemplo, pedir os sinais ao usuario), o `frases.py` pede outra, e se nenhuma servir
+a frase sai pelo fallback local e e contada como "sem LLM". O log mostra o BLEU com
+as 26 frases e so com as que o LLM respondeu. Rode mais de uma vez e reporte a
+media e quantas frases cairam no fallback.
+
+As 3 rodadas com LLM do teste, com media e desvio, estao em
+`resultados/bleu_llm_rodadas.md`.
 
 ## 8. Rodar a demo
 

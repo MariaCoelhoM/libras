@@ -1,4 +1,3 @@
-
 import json
 import os
 import time
@@ -33,12 +32,38 @@ GEMINI_RESERVA = [
     if modelo.strip()
 ]
 
+# Tentativas (o Groq às vezes devolve resposta vazia; o Gemini, 503).
+GROQ_TENTATIVAS = 3
+GEMINI_TENTATIVAS = 4
+
+# Quantas frases novas pedir ao LLM quando a resposta é inválida
+# (ex.: "forneça os sinais que deseja traduzir").
+MAX_GERACOES = 3
+
 
 # ============================================================
 # CARREGAMENTO DO SPACY
 # ============================================================
 
 nlp = spacy.load("pt_core_news_sm")
+
+
+# ============================================================
+# CHAVES DE API
+# ============================================================
+
+def _chave(nome):
+    """Lê a chave do ambiente sem espaços nem quebras de linha nas pontas."""
+    return (os.environ.get(nome) or "").strip()
+
+
+def _ocultar(texto):
+    """Troca as chaves de API por *** (mensagens de erro podem conter a chave)."""
+    for nome in ("GROQ_API_KEY", "GEMINI_API_KEY"):
+        c = _chave(nome)
+        if c:
+            texto = texto.replace(c, "***")
+    return texto
 
 
 # ============================================================
@@ -75,6 +100,15 @@ CLASSES = {
     "acontecer": "verbo",
     "aproveitar": "verbo",
     "conhecer": "verbo",
+
+    # V-Librasil (Núcleo Comum)
+    "surdo": "pessoa",
+    "compreender": "verbo",
+    "onde": "interrogativo (a frase e uma pergunta)",
+    "nao": "negacao",
+    "sim": "afirmacao",
+    "desculpa": "expressao de desculpa",
+    "por favor": "expressao de cortesia",
 }
 
 SENTIMENTOS = {
@@ -82,11 +116,16 @@ SENTIMENTOS = {
     if c.startswith("sentimento")
 }
 
+# Sinais que podem aparecer sozinhos, como uma frase curta.
+EXPRESSOES = {"sim", "nao", "desculpa", "por favor"}
+
 
 # ============================================================
 # PROMPT DE TRADUÇÃO
 # ============================================================
 
+# ATENCAO: os exemplos abaixo NAO podem estar em glosas_teste.csv.
+# Prefira exemplos tirados de glosas_desenvolvimento.csv.
 PROMPT = """Voce converte sinais de Libras, na ordem em que foram feitos, em uma frase curta e natural em portugues.
 
 Regras:
@@ -95,6 +134,7 @@ Regras:
 - Em Libras a ordem nao segue o portugues: o primeiro sinal costuma ser o assunto ou o objeto, nao necessariamente o sujeito.
 - Sentimentos (medo, vontade) sao sentidos por pessoas, nunca por lugares, objetos ou animais. Escolha sempre o sujeito e o objeto mais plausiveis no dia a dia.
 - Palavras em MAIUSCULAS foram soletradas no alfabeto manual (nomes ou siglas): mantenha-as exatamente como estao, apenas com inicial maiuscula.
+- Os sinais estao sempre na linha "Sinais:". Nunca peca mais informacao: se houver so um sinal, escreva uma frase curta com ele.
 - Responda so com a frase, terminada em ponto final (ou em ? se for pergunta).
 
 Exemplos:
@@ -110,11 +150,17 @@ Frase: O filho tem medo da vacina.
 Sinais: filho vontade banheiro
 Frase: O filho tem vontade de ir ao banheiro.
 
-Sinais: maçã amarelo
-Frase: A maçã é amarela.
+Sinais: sapo amarelo
+Frase: O sapo é amarelo.
 
-Sinais: banco esquina
-Frase: O banco fica na esquina.
+Sinais: espelho banheiro
+Frase: O espelho fica no banheiro.
+
+Sinais: por favor onde esquina
+Frase: Por favor, onde fica a esquina?
+
+Sinais: espelho não ruim
+Frase: O espelho não é ruim.
 
 Sinais: MARIA filho medo
 Frase: A Maria tem medo do filho.
@@ -158,11 +204,14 @@ def analisar(glosas):
 
     tipos = []
     verbos = []
+    comuns = []
 
     for g in glosas:
 
         if g in soletradas:
             continue
+
+        comuns.append(sem_acento(g))
 
         classe = CLASSES.get(sem_acento(g))
 
@@ -196,10 +245,18 @@ def analisar(glosas):
         )
 
     if not verbos:
-        dicas.append(
-            "Nenhum verbo entre os sinais: "
-            "infira o mais provavel (ter, ser, estar, ir...)."
-        )
+
+        if comuns and all(c in EXPRESSOES for c in comuns):
+            dicas.append(
+                "Expressao isolada: escreva-a como uma frase curta, "
+                "sem acrescentar informacao."
+            )
+
+        else:
+            dicas.append(
+                "Nenhum verbo entre os sinais: "
+                "infira o mais provavel (ter, ser, estar, ir...)."
+            )
 
     return " ".join(dicas)
 
@@ -213,7 +270,8 @@ def confere(glosas, frase):
     Verifica se todas as palavras dos sinais aparecem na frase.
 
     Para palavras comuns, considera o lema ou radical.
-    Para palavras soletradas, verifica o texto diretamente.
+    Para palavras soletradas e sinais com mais de uma palavra
+    (ex.: "por favor"), verifica o texto diretamente.
     """
 
     doc = nlp(frase)
@@ -233,7 +291,7 @@ def confere(glosas, frase):
         soletrada = g.isupper()
         g = sem_acento(g)
 
-        if soletrada:
+        if soletrada or " " in g:
             if g not in texto:
                 return False
 
@@ -248,6 +306,39 @@ def confere(glosas, frase):
             return False
 
     return True
+
+
+# Trechos que mostram que o LLM nao traduziu (pediu os sinais, etc.).
+MARCAS_META = (
+    "forneca",
+    "forneco",
+    "sinais",
+    "traduza",
+    "traduzir",
+    "que deseja",
+    "entendido",
+    "informe os",
+    "envie os",
+)
+
+
+def resposta_invalida(glosas, frase):
+    """
+    True se a resposta nao e uma traducao: vazia, so pontuacao,
+    muito longa ou pedindo os sinais ao usuario.
+    """
+
+    texto = sem_acento(frase)
+
+    if not any(c.isalpha() for c in texto):
+        return True
+
+    if len(frase.split()) > 20:
+        return True
+
+    alvo = sem_acento(" ".join(glosas))
+
+    return any(m in texto and m not in alvo for m in MARCAS_META)
 
 
 def sujeito_invalido(frase):
@@ -291,14 +382,21 @@ def sujeito_invalido(frase):
 # INTEGRAÇÃO COM GROQ (MODELO PRINCIPAL)
 # ============================================================
 
+class RespostaVazia(RuntimeError):
+    """O Groq respondeu sem texto (o modelo de raciocinio gastou tudo pensando)."""
 
-def chamar_groq(prompt):
+
+def chamar_groq(prompt, tentativa=0):
     """
     Envia o prompt para a API Groq.
     O Groq é o modelo principal do tradutor.
+
+    `tentativa` (0, 1, 2...) so e usado nas repeticoes apos resposta vazia:
+    repetir exatamente o mesmo pedido tende a dar a mesma resposta vazia,
+    entao a temperatura sobe e, na ultima tentativa, o raciocinio aumenta.
     """
 
-    chave = os.environ.get("GROQ_API_KEY")
+    chave = _chave("GROQ_API_KEY")
 
     if not chave:
         raise RuntimeError(
@@ -337,29 +435,30 @@ def chamar_groq(prompt):
                 "content": prompt
             }
         ],
-        temperature=0.2,
+        temperature=(0.2, 0.5, 0.8)[min(tentativa, 2)],
 
         # Mais espaço para o raciocínio e a frase final.
         max_completion_tokens=1024,
 
-        # Reduz o esforço de raciocínio para uma tarefa curta.
-        reasoning_effort="low"
+        # Esforço baixo para uma tarefa curta; sobe na ultima repeticao.
+        reasoning_effort="medium" if tentativa >= GROQ_TENTATIVAS - 1 else "low"
     )
 
     escolha = resposta.choices[0]
     texto = escolha.message.content
 
     if not isinstance(texto, str) or not texto.strip():
-        motivo = escolha.finish_reason
+        uso = getattr(resposta, "usage", None)
 
-        raise RuntimeError(
+        raise RespostaVazia(
             "O Groq retornou uma resposta vazia. "
             "Motivo de encerramento: "
-            + str(motivo)
+            + str(escolha.finish_reason)
+            + ". Tokens de saida: "
+            + str(getattr(uso, "completion_tokens", "?"))
         )
 
     return texto.strip()
-
 
 
 # ============================================================
@@ -373,7 +472,7 @@ def _chamar_gemini(prompt, modelo):
     O Gemini é utilizado quando o Groq falha.
     """
 
-    chave = os.environ.get("GEMINI_API_KEY")
+    chave = _chave("GEMINI_API_KEY")
 
     if not chave:
         raise RuntimeError(
@@ -412,13 +511,15 @@ def _chamar_gemini(prompt, modelo):
 
     dados = None
 
-    for tentativa in range(3):
+    for tentativa in range(GEMINI_TENTATIVAS):
+
+        ultima = tentativa == GEMINI_TENTATIVAS - 1
 
         try:
 
             with urllib.request.urlopen(
                 pedido,
-                timeout=12
+                timeout=15
             ) as resposta:
 
                 dados = json.load(resposta)
@@ -427,9 +528,15 @@ def _chamar_gemini(prompt, modelo):
 
         except urllib.error.HTTPError as erro:
 
-            if erro.code in (429, 500, 503) and tentativa < 2:
+            detalhe = erro.read().decode(errors="ignore")
 
-                time.sleep(1 + tentativa)
+            # 429 por COTA esgotada nao passa esperando segundos: falha logo.
+            sem_cota = erro.code == 429 and "quota" in detalhe.lower()
+
+            if erro.code in (429, 500, 503) and not ultima and not sem_cota:
+
+                # Espera 2, 4, 8 s entre as tentativas.
+                time.sleep(2 * (2 ** tentativa))
                 continue
 
             raise RuntimeError(
@@ -438,13 +545,13 @@ def _chamar_gemini(prompt, modelo):
                 + " "
                 + str(erro.code)
                 + ": "
-                + erro.read().decode(errors="ignore")[:300]
+                + detalhe[:300]
             ) from None
 
         except (TimeoutError, urllib.error.URLError) as erro:
 
-            if tentativa < 2:
-                time.sleep(1 + tentativa)
+            if not ultima:
+                time.sleep(2 * (2 ** tentativa))
                 continue
 
             raise RuntimeError(
@@ -479,7 +586,7 @@ def chamar_llm(prompt):
     """
     Ordem de prioridade:
 
-    1. Groq (modelo principal).
+    1. Groq (modelo principal), repetindo se vier resposta vazia.
     2. Gemini principal.
     3. Modelos Gemini adicionais configurados como reserva.
 
@@ -492,28 +599,41 @@ def chamar_llm(prompt):
     # PRIMEIRA TENTATIVA: GROQ
     # --------------------------------------------------------
 
-    if os.environ.get("GROQ_API_KEY"):
+    if _chave("GROQ_API_KEY"):
 
-        try:
+        for tentativa in range(GROQ_TENTATIVAS):
 
-            resultado = chamar_groq(prompt)
+            try:
 
-            if resultado:
+                resultado = chamar_groq(prompt, tentativa)
+
                 print("LLM utilizado: Groq -", GROQ_MODELO)
                 return resultado
 
-            raise RuntimeError(
-                "Groq retornou uma resposta vazia."
-            )
+            except RespostaVazia as erro:
 
-        except Exception as erro:
+                ultimo_erro = erro
 
-            ultimo_erro = erro
+                print(
+                    "Groq falhou (tentativa "
+                    + str(tentativa + 1) + "/" + str(GROQ_TENTATIVAS)
+                    + "):",
+                    _ocultar(str(erro))[:200]
+                )
 
-            print(
-                "Groq falhou:",
-                str(erro)[:200]
-            )
+                if tentativa < GROQ_TENTATIVAS - 1:
+                    time.sleep(1 + tentativa)
+
+            except Exception as erro:
+
+                ultimo_erro = erro
+
+                print(
+                    "Groq falhou:",
+                    _ocultar(str(erro))[:200]
+                )
+
+                break
 
     else:
 
@@ -526,7 +646,7 @@ def chamar_llm(prompt):
     # SEGUNDA TENTATIVA: GEMINI
     # --------------------------------------------------------
 
-    if os.environ.get("GEMINI_API_KEY"):
+    if _chave("GEMINI_API_KEY"):
 
         modelos = [GEMINI_MODELO] + GEMINI_RESERVA
 
@@ -559,7 +679,7 @@ def chamar_llm(prompt):
                 print(
                     "Gemini falhou:",
                     modelo,
-                    str(erro)[:200]
+                    _ocultar(str(erro))[:200]
                 )
 
     else:
@@ -575,7 +695,7 @@ def chamar_llm(prompt):
     if ultimo_erro:
         raise RuntimeError(
             "Groq e Gemini indisponíveis. Último erro: "
-            + str(ultimo_erro)
+            + _ocultar(str(ultimo_erro))
         )
 
     raise RuntimeError(
@@ -602,10 +722,21 @@ def limpar(texto):
         if l.strip()
     ]
 
-    frase = linhas[0] if linhas else ""
+    # Alguns modelos repetem o enunciado ("Sinais: ...") antes da frase.
+    # Se houver uma linha "Frase: ...", ela e a resposta.
+    for l in linhas:
+        if l.lower().startswith("frase:"):
+            conteudo = l[6:].strip(" *\"'")
+            if conteudo:
+                return conteudo
 
-    if frase.lower().startswith("frase:"):
-        frase = frase[6:]
+    # Senao, descarta as linhas que apenas repetem o enunciado.
+    linhas = [
+        l for l in linhas
+        if not sem_acento(l).startswith(("sinais:", "analise:", "frase:"))
+    ]
+
+    frase = linhas[0] if linhas else ""
 
     return frase.strip(" *\"'")
 
@@ -647,7 +778,11 @@ def montar_frase(glosas):
     Prioridade:
     1. Groq.
     2. Gemini.
-    3. Fallback local.
+    3. Fallback local (usou_llm = False).
+
+    Respostas inválidas do LLM (pedir os sinais, só "?", etc.)
+    nunca contam como saída do LLM: o LLM é chamado de novo e,
+    se continuar inválido, a frase sai pelo fallback local.
 
     Mantém o mesmo contrato de retorno utilizado pelo app.py.
     """
@@ -686,17 +821,32 @@ def montar_frase(glosas):
 
     try:
 
-        frase = limpar(
-            chamar_llm(prompt)
-        )
+        frase = ""
 
-        motivo = problema(glosas, frase) if frase else ""
+        for geracao in range(MAX_GERACOES):
 
-        # ----------------------------------------------------
-        # SEGUNDA TENTATIVA SE A FRASE PRECISAR DE CORREÇÃO
-        # ----------------------------------------------------
+            candidata = limpar(chamar_llm(prompt))
 
-        if motivo:
+            # Resposta que nao e traducao: pede outra do zero.
+            if resposta_invalida(glosas, candidata):
+
+                print(
+                    "Resposta invalida do LLM ("
+                    + str(geracao + 1) + "/" + str(MAX_GERACOES) + "):",
+                    candidata[:80]
+                )
+
+                continue
+
+            frase = candidata
+            motivo = problema(glosas, frase)
+
+            if not motivo:
+                break
+
+            # ------------------------------------------------
+            # SEGUNDA TENTATIVA SE A FRASE PRECISAR DE CORREÇÃO
+            # ------------------------------------------------
 
             print(
                 "Corrigindo:",
@@ -718,7 +868,7 @@ def montar_frase(glosas):
                     )
                 )
 
-                if nova:
+                if nova and not resposta_invalida(glosas, nova):
                     frase = nova
 
             except Exception as erro:
@@ -726,17 +876,19 @@ def montar_frase(glosas):
                 # A primeira frase continua valendo.
                 print(
                     "Segunda tentativa falhou:",
-                    str(erro)[:150]
+                    _ocultar(str(erro))[:150]
                 )
 
+            break
+
         # ----------------------------------------------------
-        # VERIFICA SE A RESPOSTA ESTÁ VAZIA
+        # NENHUMA RESPOSTA VALIDA
         # ----------------------------------------------------
 
         if not frase:
 
             raise RuntimeError(
-                "O LLM devolveu uma resposta vazia."
+                "O LLM so devolveu respostas invalidas."
             )
 
         # ----------------------------------------------------
@@ -762,8 +914,8 @@ def montar_frase(glosas):
     except Exception as erro:
 
         print(
-            "Groq e Gemini indisponíveis:",
-            erro
+            "Sem frase do LLM, usando fallback local:",
+            _ocultar(str(erro))
         )
 
         return (
@@ -791,7 +943,7 @@ if __name__ == "__main__":
 
     print(
         "Chave Groq configurada:",
-        bool(os.environ.get("GROQ_API_KEY"))
+        bool(_chave("GROQ_API_KEY"))
     )
 
     print(
@@ -806,7 +958,7 @@ if __name__ == "__main__":
 
     print(
         "Chave Gemini configurada:",
-        bool(os.environ.get("GEMINI_API_KEY"))
+        bool(_chave("GEMINI_API_KEY"))
     )
 
     testes = [
